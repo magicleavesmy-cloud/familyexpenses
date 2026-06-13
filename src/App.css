@@ -638,6 +638,35 @@ body {
   flex: 0 0 16px;
 }
 
+.sync-pill {
+  position: absolute;
+  top: 62px;
+  right: 18px;
+  z-index: 10;
+  min-height: 22px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: rgba(255, 248, 240, 0.84);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(32, 18, 9, 0.12);
+}
+
+.sync-pill.synced {
+  color: #2f8f56;
+}
+
+.sync-pill.syncing {
+  color: var(--orange);
+}
+
+.sync-pill.offline {
+  color: var(--danger);
+}
+
 .quick-actions {
   width: calc(100% - 24px);
   height: 40px;

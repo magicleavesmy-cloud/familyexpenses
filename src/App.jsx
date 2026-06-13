@@ -1,4 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  onSnapshot,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore'
 import {
   Activity,
   AlertTriangle,
@@ -40,6 +50,7 @@ import {
   X,
   Building2,
 } from 'lucide-react'
+import { db, familyId, firebaseEnabled } from './firebase'
 import './App.css'
 
 const DEFAULT_ACCOUNTS = [
@@ -91,9 +102,19 @@ const DEFAULT_COMMITMENTS = [
 const STORAGE = {
   expenses: 'duitlife_expenses',
   accounts: 'duitlife_accounts',
+  transfers: 'duitlife_transfers',
   settings: 'duitlife_settings',
   commitments: 'duitlife_commitments',
   commitmentPaidPrefix: 'duitlife_commitmentPaid_',
+}
+
+const FIRESTORE_COLLECTIONS = {
+  expenses: 'expenses',
+  accounts: 'accounts',
+  transfers: 'transfers',
+  commitments: 'monthlyCommitments',
+  commitmentPaidStatus: 'commitmentPaidStatus',
+  settings: 'settings',
 }
 
 const safeParse = (value, fallback) => {
@@ -242,9 +263,13 @@ export default function App() {
   const [page, setPage]           = useState('dashboard')
   const [expenses, setExpenses]   = useState([])
   const [accounts, setAccounts]   = useState(DEFAULT_ACCOUNTS)
+  const [transfers, setTransfers] = useState([])
   const [settings, setSettings]   = useState(DEFAULT_SETTINGS)
   const [commitments, setCommitments] = useState(DEFAULT_COMMITMENTS)
   const [paidCommitments, setPaidCommitments] = useState({})
+  const [syncStatus, setSyncStatus] = useState(firebaseEnabled ? 'Syncing' : 'Offline')
+  const [firestoreReady, setFirestoreReady] = useState(false)
+  const migrationStarted = useRef(false)
   const [showCommitments, setShowCommitments] = useState(false)
   const [commitmentEditId, setCommitmentEditId] = useState(null)
   const [editId, setEditId]       = useState(null)
@@ -268,21 +293,91 @@ export default function App() {
     accountId: 'cash',
     reminder: true,
   })
+  const [localDataLoaded, setLocalDataLoaded] = useState(false)
+
+  const familyDocPath = ['families', familyId]
+  const collectionRef = (name) => collection(db, ...familyDocPath, name)
+  const docRef = (name, id) => doc(db, ...familyDocPath, name, String(id))
+  const cleanRecord = (record) => JSON.parse(JSON.stringify(record || {}))
+  const upsertDoc = async (ref, data) => {
+    try {
+      await updateDoc(ref, cleanRecord(data))
+    } catch {
+      await setDoc(ref, cleanRecord(data))
+    }
+  }
+
+  const writeWithSyncStatus = async (operation) => {
+    if (!firebaseEnabled || !db || !firestoreReady) return
+    setSyncStatus('Syncing')
+    try {
+      await operation()
+      setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
+    } catch (error) {
+      console.warn('Firestore sync failed', error)
+      setSyncStatus('Offline')
+    }
+  }
+
+  const syncArrayCollection = async (collectionName, items) => {
+    if (!firebaseEnabled || !db) return
+    const currentDocs = await getDocs(collectionRef(collectionName))
+    const nextIds = new Set(items.map(item => String(item.id)))
+    await Promise.all([
+      ...currentDocs.docs
+        .filter(item => !nextIds.has(item.id))
+        .map(item => deleteDoc(item.ref)),
+      ...items.map(item => (
+        item.id
+          ? upsertDoc(docRef(collectionName, item.id), item)
+          : addDoc(collectionRef(collectionName), cleanRecord(item))
+      )),
+    ])
+  }
+
+  const syncSettingsDoc = (nextSettings) => writeWithSyncStatus(() =>
+    upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), nextSettings)
+  )
+
+  const syncPaidStatusDoc = (monthKey, nextPaidStatus) => writeWithSyncStatus(() =>
+    upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, monthKey), {
+      month: monthKey,
+      paid: cleanRecord(nextPaidStatus),
+    })
+  )
+
+  const syncFullData = (nextData) => writeWithSyncStatus(async () => {
+    await Promise.all([
+      syncArrayCollection(FIRESTORE_COLLECTIONS.expenses, nextData.expenses || []),
+      syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextData.accounts || []),
+      syncArrayCollection(FIRESTORE_COLLECTIONS.transfers, nextData.transfers || []),
+      syncArrayCollection(FIRESTORE_COLLECTIONS.commitments, nextData.commitments || []),
+      upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), nextData.settings || DEFAULT_SETTINGS),
+      upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
+        month: currentMonthKey,
+        paid: cleanRecord(nextData.paidCommitments || {}),
+      }),
+    ])
+  })
 
   useEffect(() => {
     const ex = safeParse(localStorage.getItem(STORAGE.expenses), [])
     const ac = safeParse(localStorage.getItem(STORAGE.accounts), DEFAULT_ACCOUNTS)
+    const tr = safeParse(localStorage.getItem(STORAGE.transfers), [])
     const se = safeParse(localStorage.getItem(STORAGE.settings), DEFAULT_SETTINGS)
     const cm = safeParse(localStorage.getItem(STORAGE.commitments), DEFAULT_COMMITMENTS)
     setExpenses(Array.isArray(ex) ? ex : [])
     setAccounts(Array.isArray(ac) && ac.length ? ac : DEFAULT_ACCOUNTS)
+    setTransfers(Array.isArray(tr) ? tr : [])
     setCommitments(Array.isArray(cm) && cm.length ? cm : DEFAULT_COMMITMENTS)
     setSettings({ ...DEFAULT_SETTINGS, ...se })
     setBudgetInput(String(se.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
+    setLocalDataLoaded(true)
   }, [])
 
   useEffect(() => { localStorage.setItem(STORAGE.expenses, JSON.stringify(expenses)) }, [expenses])
   useEffect(() => { localStorage.setItem(STORAGE.accounts, JSON.stringify(accounts)) }, [accounts])
+  useEffect(() => { localStorage.setItem(STORAGE.transfers, JSON.stringify(transfers)) }, [transfers])
   useEffect(() => { localStorage.setItem(STORAGE.settings, JSON.stringify(settings)) }, [settings])
   useEffect(() => { localStorage.setItem(STORAGE.commitments, JSON.stringify(commitments)) }, [commitments])
 
@@ -297,6 +392,114 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(`${STORAGE.commitmentPaidPrefix}${currentMonthKey}`, JSON.stringify(paidCommitments))
   }, [currentMonthKey, paidCommitments])
+
+  useEffect(() => {
+    if (!firebaseEnabled || !db) {
+      setSyncStatus('Offline')
+      return
+    }
+    if (!localDataLoaded || migrationStarted.current) return
+
+    migrationStarted.current = true
+    const migrateLocalData = async () => {
+      setSyncStatus('Syncing')
+      try {
+        const localPaid = safeParse(localStorage.getItem(`${STORAGE.commitmentPaidPrefix}${currentMonthKey}`), {})
+        const seedIfEmpty = async (collectionName, items) => {
+          const snapshot = await getDocs(collectionRef(collectionName))
+          if (snapshot.empty && items.length) await syncArrayCollection(collectionName, items)
+        }
+
+        await Promise.all([
+          seedIfEmpty(FIRESTORE_COLLECTIONS.expenses, expenses),
+          seedIfEmpty(FIRESTORE_COLLECTIONS.accounts, accounts),
+          seedIfEmpty(FIRESTORE_COLLECTIONS.transfers, transfers),
+          seedIfEmpty(FIRESTORE_COLLECTIONS.commitments, commitments),
+        ])
+
+        const settingsSnapshot = await getDocs(collectionRef(FIRESTORE_COLLECTIONS.settings))
+        if (settingsSnapshot.empty) {
+          await upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), settings)
+        }
+
+        const paidSnapshot = await getDocs(collectionRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus))
+        if (paidSnapshot.empty && Object.keys(localPaid).length) {
+          await upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
+            month: currentMonthKey,
+            paid: cleanRecord(localPaid),
+          })
+        }
+
+        setFirestoreReady(true)
+        setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
+      } catch (error) {
+        console.warn('Firebase migration failed', error)
+        setSyncStatus('Offline')
+      }
+    }
+
+    migrateLocalData()
+  }, [accounts, commitments, currentMonthKey, expenses, localDataLoaded, settings, transfers])
+
+  useEffect(() => {
+    if (!firebaseEnabled || !db || !firestoreReady) return undefined
+    setSyncStatus('Syncing')
+
+    const sortAccounts = (items) => {
+      const order = new Map(DEFAULT_ACCOUNTS.map((item, index) => [item.id, index]))
+      return [...items].sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
+    }
+    const sortCommitments = (items) => {
+      const order = new Map(DEFAULT_COMMITMENTS.map((item, index) => [item.id, index]))
+      return [...items].sort((a, b) => (order.get(a.id) ?? 999) - (order.get(b.id) ?? 999))
+    }
+    const readDocs = (snapshot) => snapshot.docs.map(item => ({ id: item.id, ...item.data() }))
+
+    const unsubscribers = [
+      onSnapshot(collectionRef(FIRESTORE_COLLECTIONS.expenses), (snapshot) => {
+        setExpenses(readDocs(snapshot))
+        setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
+      }, () => setSyncStatus('Offline')),
+      onSnapshot(collectionRef(FIRESTORE_COLLECTIONS.accounts), (snapshot) => {
+        const nextAccounts = readDocs(snapshot)
+        setAccounts(nextAccounts.length ? sortAccounts(nextAccounts) : DEFAULT_ACCOUNTS)
+        setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
+      }, () => setSyncStatus('Offline')),
+      onSnapshot(collectionRef(FIRESTORE_COLLECTIONS.transfers), (snapshot) => {
+        setTransfers(readDocs(snapshot))
+        setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
+      }, () => setSyncStatus('Offline')),
+      onSnapshot(collectionRef(FIRESTORE_COLLECTIONS.commitments), (snapshot) => {
+        const nextCommitments = readDocs(snapshot)
+        setCommitments(nextCommitments.length ? sortCommitments(nextCommitments) : DEFAULT_COMMITMENTS)
+        setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
+      }, () => setSyncStatus('Offline')),
+      onSnapshot(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), (snapshot) => {
+        if (snapshot.exists()) {
+          const nextSettings = { ...DEFAULT_SETTINGS, ...snapshot.data() }
+          setSettings(nextSettings)
+          setBudgetInput(String(nextSettings.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
+        }
+        setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
+      }, () => setSyncStatus('Offline')),
+      onSnapshot(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), (snapshot) => {
+        setPaidCommitments(snapshot.exists() ? (snapshot.data().paid || {}) : {})
+        setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
+      }, () => setSyncStatus('Offline')),
+    ]
+
+    return () => unsubscribers.forEach(unsubscribe => unsubscribe())
+  }, [currentMonthKey, firestoreReady])
+
+  useEffect(() => {
+    const updateOnlineStatus = () => setSyncStatus(firebaseEnabled && navigator.onLine ? 'Synced' : 'Offline')
+    window.addEventListener('online', updateOnlineStatus)
+    window.addEventListener('offline', updateOnlineStatus)
+    return () => {
+      window.removeEventListener('online', updateOnlineStatus)
+      window.removeEventListener('offline', updateOnlineStatus)
+    }
+  }, [])
 
   const currentMonthExpenses = useMemo(
     () => expenses.filter(e => getMonthKey(e.date) === currentMonthKey),
@@ -421,12 +624,24 @@ export default function App() {
     const amount = Number(form.amount)
     if (!form.date || !form.accountId || !form.category || isNaN(amount) || amount <= 0) { alert('Please fill all fields with a valid amount.'); return }
     const record = { id: editId || `${Date.now()}`, date: form.date, person: form.person, accountId: form.accountId, category: form.category, amount, notes: form.notes.trim() }
+    let nextExpenses
+    let nextAccounts = accounts
     if (editId) {
       const old = expenses.find(ex => ex.id === editId)
-      if (old) setAccounts(prev => prev.map(a => a.id === old.accountId ? { ...a, balance: a.balance + Number(old.amount) } : a))
-      setExpenses(prev => prev.map(ex => ex.id === editId ? record : ex))
-    } else { setExpenses(prev => [record, ...prev]) }
-    setAccounts(prev => prev.map(a => a.id === form.accountId ? { ...a, balance: Math.max(0, a.balance - amount) } : a))
+      if (old) nextAccounts = nextAccounts.map(a => a.id === old.accountId ? { ...a, balance: a.balance + Number(old.amount) } : a)
+      nextExpenses = expenses.map(ex => ex.id === editId ? record : ex)
+    } else {
+      nextExpenses = [record, ...expenses]
+    }
+    nextAccounts = nextAccounts.map(a => a.id === form.accountId ? { ...a, balance: Math.max(0, a.balance - amount) } : a)
+    setExpenses(nextExpenses)
+    setAccounts(nextAccounts)
+    writeWithSyncStatus(async () => {
+      await Promise.all([
+        upsertDoc(docRef(FIRESTORE_COLLECTIONS.expenses, record.id), record),
+        syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextAccounts),
+      ])
+    })
     resetForm(); setPage('dashboard')
   }
 
@@ -441,32 +656,49 @@ export default function App() {
   const handleDeleteExpense = (id) => {
     if (!window.confirm('Delete this expense?')) return
     const ex = expenses.find(e => e.id === id)
-    if (ex) setAccounts(prev => prev.map(a => a.id === ex.accountId ? { ...a, balance: a.balance + Number(ex.amount) } : a))
-    setExpenses(prev => prev.filter(e => e.id !== id))
+    const nextAccounts = ex
+      ? accounts.map(a => a.id === ex.accountId ? { ...a, balance: a.balance + Number(ex.amount) } : a)
+      : accounts
+    const nextExpenses = expenses.filter(e => e.id !== id)
+    setAccounts(nextAccounts)
+    setExpenses(nextExpenses)
+    writeWithSyncStatus(async () => {
+      await Promise.all([
+        deleteDoc(docRef(FIRESTORE_COLLECTIONS.expenses, id)),
+        syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextAccounts),
+      ])
+    })
   }
 
   const handleSaveBalance = (id) => {
     const val = Number(balanceEdits[id])
     if (isNaN(val) || val < 0) { alert('Enter a valid balance.'); return }
-    setAccounts(prev => prev.map(a => a.id === id ? { ...a, balance: val } : a))
+    const nextAccounts = accounts.map(a => a.id === id ? { ...a, balance: val } : a)
+    setAccounts(nextAccounts)
+    writeWithSyncStatus(() => syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextAccounts))
     setBalanceEdits(prev => { const n = { ...prev }; delete n[id]; return n })
   }
 
   const handleSaveBudget = () => {
     const b = Number(budgetInput)
     if (isNaN(b) || b < 0) { alert('Enter a valid budget.'); return }
-    setSettings(s => ({ ...s, monthlyBudget: b, manualBudgetOverride: true })); alert('Budget updated.')
+    const nextSettings = { ...settings, monthlyBudget: b, manualBudgetOverride: true }
+    setSettings(nextSettings)
+    syncSettingsDoc(nextSettings)
+    alert('Budget updated.')
   }
 
   const handleChangePin = () => {
     if (pinInputs.current !== settings.pin) { alert('Current PIN is incorrect.'); return }
     if (pinInputs.next.length !== 4 || pinInputs.next !== pinInputs.confirm) { alert('New PIN must be 4 digits and match.'); return }
-    setSettings(s => ({ ...s, pin: pinInputs.next }))
+    const nextSettings = { ...settings, pin: pinInputs.next }
+    setSettings(nextSettings)
+    syncSettingsDoc(nextSettings)
     setPinInputs({ current: '', next: '', confirm: '' }); alert('PIN updated.')
   }
 
   const handleExportBackup = () => {
-    const blob = new Blob([JSON.stringify({ settings, expenses, accounts, commitments }, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ settings, expenses, accounts, transfers, commitments }, null, 2)], { type: 'application/json' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob); link.download = 'duitlife-backup.json'; link.click(); URL.revokeObjectURL(link.href)
   }
@@ -477,16 +709,33 @@ export default function App() {
       if (!parsed || typeof parsed !== 'object') throw new Error()
       setExpenses(Array.isArray(parsed.expenses) ? parsed.expenses : [])
       setAccounts(Array.isArray(parsed.accounts) ? parsed.accounts : DEFAULT_ACCOUNTS)
+      setTransfers(Array.isArray(parsed.transfers) ? parsed.transfers : [])
       setCommitments(Array.isArray(parsed.commitments) ? parsed.commitments : DEFAULT_COMMITMENTS)
       setSettings({ ...DEFAULT_SETTINGS, ...(parsed.settings || {}) })
       setBudgetInput(String(parsed.settings?.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
+      syncFullData({
+        expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
+        accounts: Array.isArray(parsed.accounts) ? parsed.accounts : DEFAULT_ACCOUNTS,
+        transfers: Array.isArray(parsed.transfers) ? parsed.transfers : [],
+        commitments: Array.isArray(parsed.commitments) ? parsed.commitments : DEFAULT_COMMITMENTS,
+        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+        paidCommitments,
+      })
       setRestoreText(''); alert('Backup restored.')
     } catch { alert('Invalid backup file.') }
   }
 
   const handleResetAll = () => {
     if (!window.confirm('Reset all data?')) return
-    setExpenses([]); setAccounts(DEFAULT_ACCOUNTS); setCommitments(DEFAULT_COMMITMENTS); setPaidCommitments({}); setSettings(DEFAULT_SETTINGS)
+    setExpenses([]); setAccounts(DEFAULT_ACCOUNTS); setTransfers([]); setCommitments(DEFAULT_COMMITMENTS); setPaidCommitments({}); setSettings(DEFAULT_SETTINGS)
+    syncFullData({
+      expenses: [],
+      accounts: DEFAULT_ACCOUNTS,
+      transfers: [],
+      commitments: DEFAULT_COMMITMENTS,
+      settings: DEFAULT_SETTINGS,
+      paidCommitments: {},
+    })
     setBudgetInput(String(DEFAULT_SETTINGS.monthlyBudget)); setPage('dashboard'); alert('App reset.')
   }
 
@@ -541,21 +790,26 @@ export default function App() {
       reminder: commitmentForm.reminder,
       active: true,
     }
-    setCommitments(current => (
-      commitmentEditId
-        ? current.map(item => item.id === commitmentEditId ? record : item)
-        : [record, ...current]
-    ))
+    const nextCommitments = commitmentEditId
+      ? commitments.map(item => item.id === commitmentEditId ? record : item)
+      : [record, ...commitments]
+    setCommitments(nextCommitments)
+    writeWithSyncStatus(() => syncArrayCollection(FIRESTORE_COLLECTIONS.commitments, nextCommitments))
     resetCommitmentForm()
   }
 
   const handleDeleteCommitment = (id) => {
     if (!window.confirm('Delete this commitment?')) return
-    setCommitments(current => current.filter(item => item.id !== id))
-    setPaidCommitments(current => {
-      const next = { ...current }
-      delete next[id]
-      return next
+    const nextCommitments = commitments.filter(item => item.id !== id)
+    const nextPaid = { ...paidCommitments }
+    delete nextPaid[id]
+    setCommitments(nextCommitments)
+    setPaidCommitments(nextPaid)
+    writeWithSyncStatus(async () => {
+      await Promise.all([
+        deleteDoc(docRef(FIRESTORE_COLLECTIONS.commitments, id)),
+        syncPaidStatusDoc(currentMonthKey, nextPaid),
+      ])
     })
   }
 
@@ -575,11 +829,24 @@ export default function App() {
       amount,
       notes: commitment.name,
     }
-    setExpenses(current => [record, ...current])
-    setAccounts(current => current.map(account =>
+    const nextExpenses = [record, ...expenses]
+    const nextAccounts = accounts.map(account =>
       account.id === record.accountId ? { ...account, balance: Math.max(0, account.balance - amount) } : account
-    ))
-    setPaidCommitments(current => ({ ...current, [commitment.id]: true }))
+    )
+    const nextPaid = { ...paidCommitments, [commitment.id]: true }
+    setExpenses(nextExpenses)
+    setAccounts(nextAccounts)
+    setPaidCommitments(nextPaid)
+    writeWithSyncStatus(async () => {
+      await Promise.all([
+        upsertDoc(docRef(FIRESTORE_COLLECTIONS.expenses, record.id), record),
+        syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextAccounts),
+        upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
+          month: currentMonthKey,
+          paid: cleanRecord(nextPaid),
+        }),
+      ])
+    })
   }
 
   if (!authenticated) {
@@ -634,6 +901,7 @@ export default function App() {
             <LogOut size={18} aria-hidden="true"/> Logout
           </button>
         </div>
+        <div className={`sync-pill ${syncStatus.toLowerCase()}`}>{syncStatus}</div>
       </header>
 
       {/* ── QUICK ACTIONS ── */}
