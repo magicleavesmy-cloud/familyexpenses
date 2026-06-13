@@ -612,7 +612,7 @@ export default function App() {
       {/* ── FAMILY HEADER ── */}
       <header className="top-bar">
         <div className="family-header">
-          <img src="/kids.png" alt="Tasneem and Aylan" className="family-img" />
+          <img src="/hero-family.png" alt="Adam and Fatihah family portrait" className="family-img" />
           <div className="family-overlay" />
           <div className="family-content">
             <p className="family-greeting">Assalamualaikum 👋</p>

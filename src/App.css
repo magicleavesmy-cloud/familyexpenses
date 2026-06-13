@@ -144,8 +144,11 @@ body {
 
 .family-content {
   position: absolute;
-  bottom: 0; left: 0; right: 0;
-  padding: 14px 18px 20px;
+  top: 16px;
+  left: 16px;
+  right: auto;
+  bottom: auto;
+  padding: 0;
 }
 
 .family-greeting {
@@ -517,8 +520,10 @@ body {
 }
 
 .family-header {
+  width: calc(100% + 16px);
   height: 300px;
-  border-radius: 0 0 28px 28px;
+  margin-inline: -8px;
+  border-radius: 0 0 36px 36px;
   box-shadow: none;
   background: #1e140c;
   isolation: isolate;
@@ -538,68 +543,76 @@ body {
 }
 
 .family-content {
-  bottom: 50px;
-  left: 22px;
+  top: 22px;
+  bottom: 18px;
+  left: 10px;
   right: 22px;
   padding: 0;
 }
 
 .family-greeting {
-  margin-bottom: 4px;
+  margin-bottom: 3px;
   font-size: 12px;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.86);
 }
 
 .family-title {
-  margin: 0 0 5px;
-  font-size: 28px;
-  line-height: 1.05;
+  margin: 0 0 4px;
+  font-size: 26px;
+  line-height: 1.04;
   letter-spacing: -0.02em;
   text-shadow: 0 4px 18px rgba(0, 0, 0, 0.34);
 }
 
 .family-sub {
-  margin-bottom: 11px;
+  margin-bottom: 0;
   color: rgba(255, 255, 255, 0.86);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 400;
 }
 
 .family-spent-badge {
-  min-width: 158px;
-  min-height: 48px;
-  padding: 6px 13px 6px 6px;
-  gap: 9px;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 42px;
+  min-width: 142px;
+  min-height: 42px;
+  padding: 8px 12px;
+  gap: 8px;
   border: 0;
-  border-radius: 24px;
+  border-radius: 22px;
   background: rgba(54, 32, 18, 0.64);
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.22);
 }
 
 .badge-icon {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: #f6c8f0;
   color: #b74ee6;
   font-size: 18px;
+  flex: 0 0 30px;
 }
 
 .badge-icon svg {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
 }
 
 .badge-amount {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
+  line-height: 1.1;
 }
 
 .badge-label {
   margin-top: 1px;
   color: rgba(255, 255, 255, 0.78);
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.1;
 }
 
 .header-actions {
@@ -626,10 +639,10 @@ body {
 }
 
 .quick-actions {
-  width: calc(100% - 32px);
-  height: 64px;
-  margin: -29px 16px 0;
-  padding: 10px 12px;
+  width: calc(100% - 24px);
+  height: 40px;
+  margin: -20px 12px 0;
+  padding: 4px 8px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
@@ -641,14 +654,14 @@ body {
 
 .qa-btn {
   min-width: 0;
-  min-height: 42px;
-  height: 42px;
+  min-height: 30px;
+  height: 30px;
   flex-direction: row;
   justify-content: center;
-  gap: 6px;
-  padding: 0 10px;
+  gap: 5px;
+  padding: 0 6px;
   border: 1px solid rgba(0, 0, 0, 0.05);
-  border-radius: 18px;
+  border-radius: 16px;
   background: #fffaf4;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
@@ -656,18 +669,18 @@ body {
 }
 
 .qa-icon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: rgba(255, 122, 26, 0.12);
   color: var(--orange);
-  font-size: 15px;
-  flex: 0 0 24px;
+  font-size: 12px;
+  flex: 0 0 20px;
 }
 
 .qa-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   stroke-width: 2.8;
 }
 
@@ -681,7 +694,7 @@ body {
 
 .qa-label {
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1335,7 +1348,7 @@ body {
 
 @media (max-width: 380px) {
   .family-title {
-    font-size: 29px;
+    font-size: 26px;
   }
 
   .quick-actions {
