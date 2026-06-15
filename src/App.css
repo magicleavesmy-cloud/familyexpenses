@@ -425,10 +425,49 @@ textarea.text-input { resize: vertical; min-height: 72px; }
 .account-total-strip { background: linear-gradient(135deg, var(--orange-light), var(--orange)); border-radius: var(--radius-md); padding: 13px 15px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--shadow-orange); }
 .account-total-label { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.75); margin-bottom: 3px; }
 .account-total-value { font-size: 20px; font-weight: 900; color: #fff; letter-spacing: -0.5px; }
-.account-edit-card { display: flex; flex-direction: column; gap: 10px; }
+.account-edit-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+}
 .account-edit-top  { display: flex; align-items: center; gap: 10px; }
-.account-edit-row  { display: flex; gap: 10px; align-items: center; }
-.account-edit-row .text-input.small { flex: 1; width: auto; }
+.account-edit-row  {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.account-edit-row .text-input.small {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+.account-update-button {
+  flex: 0 0 auto;
+  padding: 9px 12px;
+  font-size: 11px;
+}
+.account-update-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (min-width: 420px) {
+  .account-edit-row {
+    gap: 10px;
+  }
+
+  .account-update-button {
+    padding: 9px 16px;
+    font-size: 12px;
+  }
+
+  .account-update-button svg {
+    width: 16px;
+    height: 16px;
+  }
+}
 
 /* ── Reports ── */
 .report-card     { display: flex; flex-direction: column; gap: 12px; }
@@ -1247,6 +1286,142 @@ body {
   color: rgba(255, 255, 255, 0.75);
   font-size: 10px;
   line-height: 1.15;
+}
+
+.commitments-analytics-card {
+  height: auto;
+  min-height: 0;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background:
+    radial-gradient(circle at 92% 4%, rgba(255, 205, 83, 0.2), transparent 25%),
+    linear-gradient(135deg, rgba(91, 63, 143, 0.96) 0%, rgba(63, 43, 114, 0.96) 100%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.commitments-analytics-card .progress-head {
+  margin-bottom: 10px;
+}
+
+.commitments-analytics-card .progress-head h3 {
+  margin-top: 2px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.commitments-period {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.commitments-analytics-card .progress-bar {
+  margin: 0 0 12px;
+}
+
+.commitments-health {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.commitments-days-left {
+  flex: 0 0 auto;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.commitments-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.commitments-metrics div,
+.commitments-next {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.commitments-metrics div {
+  min-width: 0;
+  min-height: 54px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 7px;
+  border-radius: 12px;
+}
+
+.commitments-metrics span,
+.commitments-next-label,
+.commitments-next-amount span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.commitments-metrics strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commitments-next {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+
+.commitments-next > div:first-child {
+  min-width: 0;
+}
+
+.commitments-next-name {
+  overflow: hidden;
+  margin-top: 3px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commitments-next-amount {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.commitments-next-amount strong {
+  color: #ffd47a;
+  font-size: 14px;
+  line-height: 1.1;
 }
 
 .account-list {

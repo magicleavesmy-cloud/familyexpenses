@@ -524,20 +524,50 @@ export default function App() {
   )
   const effectiveMonthlyBudget = commitmentsTotal
   const remainingBudget = Math.max(effectiveMonthlyBudget - monthTotal, 0)
-  const budgetUsage = effectiveMonthlyBudget > 0 ? Math.min(100, (monthTotal / effectiveMonthlyBudget) * 100) : 0
-  const commitmentProgress = commitmentsTotal > 0 ? Math.min(100, (monthTotal / commitmentsTotal) * 100) : 0
-  const unpaidCommitments = activeCommitments.filter(item => !paidCommitments[item.id])
   const todayDay = today.getDate()
-  const hasOverdueCommitment = unpaidCommitments.some(item => todayDay > Number(item.dueDay || 1))
-  const hasDueSoonCommitment = unpaidCommitments.some(item => {
-    const dueDay = Number(item.dueDay || 1)
-    return dueDay >= todayDay && dueDay - todayDay <= 3
-  })
-  const commitmentSummaryStatus = activeCommitments.length > 0 && unpaidCommitments.length === 0
+  const commitmentAnalytics = (() => {
+    const items = activeCommitments.map((item) => {
+      const amount = Number(item.amount || 0)
+      const dueDay = Number(item.dueDay || 1)
+      const paid = Boolean(paidCommitments[item.id])
+      const daysUntilDue = dueDay - todayDay
+      const status = paid
+        ? 'Paid'
+        : daysUntilDue < 0
+          ? 'Overdue'
+          : daysUntilDue <= 3
+            ? 'Due soon'
+            : 'Unpaid'
+
+      return { ...item, amount, dueDay, paid, daysUntilDue, status }
+    })
+    const paidItems = items.filter(item => item.paid)
+    const unpaidItems = items.filter(item => !item.paid)
+    const overdueItems = unpaidItems.filter(item => item.status === 'Overdue')
+    const dueSoonItems = unpaidItems.filter(item => item.status === 'Due soon')
+    const paidTotal = paidItems.reduce((sum, item) => sum + item.amount, 0)
+    const remainingTotal = Math.max(commitmentsTotal - paidTotal, 0)
+    const nextDueItem = unpaidItems
+      .slice()
+      .sort((a, b) => a.daysUntilDue - b.daysUntilDue || a.dueDay - b.dueDay || a.name.localeCompare(b.name))[0]
+    const progress = commitmentsTotal > 0 ? Math.min(100, (paidTotal / commitmentsTotal) * 100) : 0
+
+    return {
+      paidCount: paidItems.length,
+      paidTotal,
+      dueSoonCount: dueSoonItems.length,
+      overdueCount: overdueItems.length,
+      remainingTotal,
+      nextDueItem,
+      progress,
+    }
+  })()
+  const commitmentProgress = commitmentAnalytics.progress
+  const commitmentSummaryStatus = activeCommitments.length > 0 && commitmentAnalytics.paidCount === activeCommitments.length
     ? 'All clear'
-    : hasOverdueCommitment
+    : commitmentAnalytics.overdueCount > 0
       ? 'Overdue'
-      : hasDueSoonCommitment
+      : commitmentAnalytics.dueSoonCount > 0
         ? 'Due soon'
         : 'Safe zone'
   const isCommitmentRisk = commitmentSummaryStatus === 'Overdue' || commitmentSummaryStatus === 'Due soon'
@@ -981,9 +1011,9 @@ export default function App() {
               </article>
             </div>
 
-            {/* Budget ring card */}
+            {/* Commitments analytics card */}
             <article
-              className="card progress-card"
+              className="card progress-card commitments-analytics-card"
               role="button"
               tabIndex={0}
               onClick={() => setShowCommitments(true)}
@@ -995,7 +1025,8 @@ export default function App() {
               <div className="progress-head">
                 <div>
                   <p className="eyebrow">Monthly Commitments</p>
-                  <h3>{getMonthLabel(currentMonthKey)}</h3>
+                  <h3>{formatRM(commitmentsTotal)}</h3>
+                  <p className="commitments-period">{getMonthLabel(currentMonthKey)}</p>
                 </div>
                 <BudgetRing pct={commitmentProgress}/>
               </div>
@@ -1005,19 +1036,50 @@ export default function App() {
                   background: commitmentProgress >= 90 ? 'linear-gradient(90deg,#E86B5A,#FF8C42)' : undefined
                 }}/>
               </div>
-              <div className="progress-bottom">
+              <div className="commitments-health">
                 <div className="safe-zone">
                   <div className={`safe-icon${isCommitmentRisk ? ' warning' : ''}`}>
                     {isCommitmentRisk ? <AlertTriangle size={22} aria-hidden="true"/> : <ShieldCheck size={22} aria-hidden="true"/>}
                   </div>
                   <div>
                     <p className="safe-label">{commitmentSummaryStatus}</p>
-                    <p className="safe-sub">{daysLeftInMonth()} days left this month</p>
+                    <p className="safe-sub">{Math.round(commitmentProgress)}% complete</p>
                   </div>
                 </div>
-                <div className="progress-right">
-                  <p className="progress-spent">{formatRM(monthTotal)} spent</p>
-                  <p className="progress-target">{formatRM(commitmentsTotal)} commitments</p>
+                <p className="commitments-days-left">{daysLeftInMonth()} days left</p>
+              </div>
+              <div className="commitments-metrics">
+                <div>
+                  <span>Total</span>
+                  <strong>{activeCommitments.length}</strong>
+                </div>
+                <div>
+                  <span>Paid</span>
+                  <strong>{formatRMShort(commitmentAnalytics.paidTotal)}</strong>
+                </div>
+                <div>
+                  <span>Due soon</span>
+                  <strong>{commitmentAnalytics.dueSoonCount}</strong>
+                </div>
+                <div>
+                  <span>Overdue</span>
+                  <strong>{commitmentAnalytics.overdueCount}</strong>
+                </div>
+              </div>
+              <div className="commitments-next">
+                <div>
+                  <p className="commitments-next-label">Next due item</p>
+                  <p className="commitments-next-name">
+                    {commitmentAnalytics.nextDueItem ? commitmentAnalytics.nextDueItem.name : 'All paid'}
+                  </p>
+                </div>
+                <div className="commitments-next-amount">
+                  <strong>{formatRMShort(commitmentAnalytics.remainingTotal)}</strong>
+                  <span>
+                    {commitmentAnalytics.nextDueItem
+                      ? `due day ${commitmentAnalytics.nextDueItem.dueDay}`
+                      : 'remaining'}
+                  </span>
                 </div>
               </div>
             </article>
@@ -1283,7 +1345,7 @@ export default function App() {
                     placeholder="Set new balance"
                     value={balanceEdits[acc.id] ?? ''}
                     onChange={e => setBalanceEdits(prev => ({ ...prev, [acc.id]: e.target.value }))}/>
-                  <button className="button button-primary" style={{fontSize:12,padding:'9px 16px'}}
+                  <button className="button button-primary account-update-button"
                     onClick={() => handleSaveBalance(acc.id)}>
                     <Check size={16} aria-hidden="true"/> Update
                   </button>
