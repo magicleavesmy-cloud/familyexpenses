@@ -1405,8 +1405,8 @@ export default function App() {
                       </div>
                     </div>
                     <div className="commitment-actions">
-                      <button type="button" className={`mini-button commitment-toggle-button${status === 'Paid' ? ' paid' : ' unpaid'}`} onClick={() => toggleCommitmentPaid(commitment.id)}>
-  {status === 'Paid' ? 'Paid' : 'Unpaid'}
+                      <button type="button" className={`mini-button commitment-toggle-button${isPaid ? ' paid' : ' unpaid'}`} onClick={() => toggleCommitmentPaid(commitment.id)}>
+  {isPaid ? 'Paid' : 'Unpaid'}
 </button>
                       <button type="button" className="mini-button" onClick={() => handleEditCommitment(commitment)}>
                         <Pencil size={12} aria-hidden="true" /> Edit
