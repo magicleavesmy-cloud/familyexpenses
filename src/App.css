@@ -1628,3 +1628,13 @@ body {
     padding: 15px;
   }
 }
+
+.commitment-toggle-button.paid {
+  background: #E3F5EC;
+  color: #2E9E5B;
+}
+
+.commitment-toggle-button.unpaid {
+  background: #FDE8E8;
+  color: #E8607A;
+}
