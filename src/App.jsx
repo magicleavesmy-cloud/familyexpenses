@@ -4,7 +4,6 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDocs,
   onSnapshot,
   setDoc,
   updateDoc,
@@ -12,6 +11,7 @@ import {
 import {
   Activity,
   AlertTriangle,
+  Banknote,
   BarChart3,
   Briefcase,
   Calendar,
@@ -38,6 +38,7 @@ import {
   ShoppingBag,
   ShoppingCart,
   Smile,
+  Smartphone,
   Star,
   Trash,
   Tv,
@@ -49,12 +50,6 @@ import {
   Building2,
 } from 'lucide-react'
 import { db, familyId, firebaseEnabled } from './firebase'
-import tngLogo from './assets/banks/tng.png'
-import affinLogo from './assets/banks/affin.png'
-import hongleongLogo from './assets/banks/hongleong.png'
-import rhbLogo from './assets/banks/rhb.png'
-import publicbankLogo from './assets/banks/publicbank.gif'
-import maybankLogo from './assets/banks/maybank.png'
 import './App.css'
 
 const DEFAULT_ACCOUNTS = [
@@ -72,8 +67,6 @@ const CATEGORIES = [
   'Bills & Utilities','Rent','Shopping','Family',
   'Kids','Health','Loan','Entertainment','Business','Other',
 ]
-
-const ADD_CATEGORY_VALUE = '__add_new_category__'
 
 const CATEGORY_META = {
   'Food & Drink':     { Icon: Utensils, bg: '#FFF0E0', color: '#FF8C42' },
@@ -111,7 +104,6 @@ const STORAGE = {
   transfers: 'duitlife_transfers',
   settings: 'duitlife_settings',
   commitments: 'duitlife_commitments',
-  categories: 'duitlife_categories',
   commitmentPaidPrefix: 'duitlife_commitmentPaid_',
 }
 
@@ -127,18 +119,6 @@ const FIRESTORE_COLLECTIONS = {
 const safeParse = (value, fallback) => {
   if (value === null || value === undefined) return fallback
   try { return JSON.parse(value) } catch { return fallback }
-}
-
-const normalizeCategories = (items = CATEGORIES) => {
-  const seen = new Set()
-  return [...CATEGORIES, ...(Array.isArray(items) ? items : [])]
-    .map(item => String(item || '').trim())
-    .filter((item) => {
-      const key = item.toLowerCase()
-      if (!item || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
 }
 
 const formatRM = (v) => `RM${Number(v || 0).toFixed(2)}`
@@ -194,8 +174,10 @@ const sumByDate = (items) => {
   return totals
 }
 
-const isBusinessExpense = (expense) => String(expense?.category || '').toLowerCase() === 'business'
-const isExcludedExpense = (expense) => Boolean(expense?.excludedFromTotals) || isBusinessExpense(expense)
+const isPaidCommitment = (paidCommitments, id) => {
+  const value = paidCommitments[id]
+  return value === true || (value && typeof value === 'object' && value.paid !== false)
+}
 
 const CatBadge = ({ category }) => {
   const meta = CATEGORY_META[category] || CATEGORY_META['Other']
@@ -207,30 +189,12 @@ const CatBadge = ({ category }) => {
   )
 }
 
-const getBankLogo = (name = '') => {
-  const key = name.toLowerCase()
-
-  if (key.includes('hong') || key.includes('leong')) return hongleongLogo
-  if (key.includes('public')) return publicbankLogo
-  if (key.includes('affin')) return affinLogo
-  if (key.includes('maybank')) return maybankLogo
-  if (key.includes('rhb')) return rhbLogo
-  if (key.includes('tng') || key.includes('touch')) return tngLogo
-
-  return null
-}
-
-const AccountBadge = ({ type, name }) => {
-  const accountName = name || ''
+const AccountBadge = ({ type }) => {
   const cls = type === 'eWallet' ? 'ewallet' : type === 'Cash' ? 'cash' : 'bank'
-  const logo = getBankLogo(accountName)
+  const Icon = type === 'eWallet' ? Smartphone : type === 'Cash' ? Banknote : Building2
   return (
-    <div className={`account-badge ${cls}${logo ? ' has-logo' : ''}`}>
-      {logo ? (
-        <img className="account-logo-img" src={logo} alt={accountName} />
-      ) : (
-        <Building2 size={20} aria-hidden="true" />
-      )}
+    <div className={`account-badge ${cls}`}>
+      <Icon size={20} aria-hidden="true" />
     </div>
   )
 }
@@ -305,16 +269,12 @@ export default function App() {
   const [accounts, setAccounts]   = useState(DEFAULT_ACCOUNTS)
   const [transfers, setTransfers] = useState([])
   const [settings, setSettings]   = useState(DEFAULT_SETTINGS)
-  const [categories, setCategories] = useState(CATEGORIES)
   const [commitments, setCommitments] = useState(DEFAULT_COMMITMENTS)
   const [paidCommitments, setPaidCommitments] = useState({})
   const [syncStatus, setSyncStatus] = useState(firebaseEnabled ? 'Syncing' : 'Offline')
   const [firestoreReady, setFirestoreReady] = useState(false)
   const migrationStarted = useRef(false)
   const [showCommitments, setShowCommitments] = useState(false)
-  const [showCategoryModal, setShowCategoryModal] = useState(false)
-  const [newCategoryName, setNewCategoryName] = useState('')
-  const [categoryError, setCategoryError] = useState('')
   const [commitmentEditId, setCommitmentEditId] = useState(null)
   const [editId, setEditId]       = useState(null)
   const [form, setForm] = useState({
@@ -351,6 +311,22 @@ export default function App() {
     }
   }
 
+  // Helper: get a single snapshot via onSnapshot then unsubscribe immediately.
+  const onceCollectionSnapshot = (ref) => new Promise((resolve, reject) => {
+    let unsub = null
+    try {
+      unsub = onSnapshot(ref, (snapshot) => {
+        resolve({ snapshot, unsub })
+      }, (err) => {
+        if (unsub) unsub()
+        reject(err)
+      })
+    } catch (err) {
+      if (unsub) unsub()
+      reject(err)
+    }
+  })
+
   const writeWithSyncStatus = async (operation) => {
     if (!firebaseEnabled || !db || !firestoreReady) return
     setSyncStatus('Syncing')
@@ -365,25 +341,28 @@ export default function App() {
 
   const syncArrayCollection = async (collectionName, items) => {
     if (!firebaseEnabled || !db) return
-    const currentDocs = await getDocs(collectionRef(collectionName))
-    const nextIds = new Set(items.map(item => String(item.id)))
-    await Promise.all([
-      ...currentDocs.docs
-        .filter(item => !nextIds.has(item.id))
-        .map(item => deleteDoc(item.ref)),
-      ...items.map(item => (
-        item.id
-          ? upsertDoc(docRef(collectionName, item.id), item)
-          : addDoc(collectionRef(collectionName), cleanRecord(item))
-      )),
-    ])
+    // Use a one-time onSnapshot to read current documents, then unsubscribe.
+    const { snapshot, unsub } = await onceCollectionSnapshot(collectionRef(collectionName))
+    try {
+      const currentDocs = snapshot
+      const nextIds = new Set(items.map(item => String(item.id)))
+      await Promise.all([
+        ...currentDocs.docs
+          .filter(item => !nextIds.has(item.id))
+          .map(item => deleteDoc(item.ref)),
+        ...items.map(item => (
+          item.id
+            ? upsertDoc(docRef(collectionName, item.id), item)
+            : addDoc(collectionRef(collectionName), cleanRecord(item))
+        )),
+      ])
+    } finally {
+      if (typeof unsub === 'function') unsub()
+    }
   }
 
-  const syncSettingsDoc = (nextSettings, nextCategories = categories) => writeWithSyncStatus(() =>
-    upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), {
-      ...nextSettings,
-      categories: normalizeCategories(nextCategories),
-    })
+  const syncSettingsDoc = (nextSettings) => writeWithSyncStatus(() =>
+    upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), nextSettings)
   )
 
   const syncPaidStatusDoc = (monthKey, nextPaidStatus) => writeWithSyncStatus(() =>
@@ -399,10 +378,7 @@ export default function App() {
       syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextData.accounts || []),
       syncArrayCollection(FIRESTORE_COLLECTIONS.transfers, nextData.transfers || []),
       syncArrayCollection(FIRESTORE_COLLECTIONS.commitments, nextData.commitments || []),
-      upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), {
-        ...(nextData.settings || DEFAULT_SETTINGS),
-        categories: normalizeCategories(nextData.categories || nextData.settings?.categories || categories),
-      }),
+      upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), nextData.settings || DEFAULT_SETTINGS),
       upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
         month: currentMonthKey,
         paid: cleanRecord(nextData.paidCommitments || {}),
@@ -416,14 +392,11 @@ export default function App() {
     const tr = safeParse(localStorage.getItem(STORAGE.transfers), [])
     const se = safeParse(localStorage.getItem(STORAGE.settings), DEFAULT_SETTINGS)
     const cm = safeParse(localStorage.getItem(STORAGE.commitments), DEFAULT_COMMITMENTS)
-    const ca = safeParse(localStorage.getItem(STORAGE.categories), se.categories || CATEGORIES)
-    const nextCategories = normalizeCategories(se.categories || ca)
     setExpenses(Array.isArray(ex) ? ex : [])
     setAccounts(Array.isArray(ac) && ac.length ? ac : DEFAULT_ACCOUNTS)
     setTransfers(Array.isArray(tr) ? tr : [])
     setCommitments(Array.isArray(cm) && cm.length ? cm : DEFAULT_COMMITMENTS)
-    setCategories(nextCategories)
-    setSettings({ ...DEFAULT_SETTINGS, ...se, categories: nextCategories })
+    setSettings({ ...DEFAULT_SETTINGS, ...se })
     setBudgetInput(String(se.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
     setLocalDataLoaded(true)
   }, [])
@@ -433,7 +406,6 @@ export default function App() {
   useEffect(() => { localStorage.setItem(STORAGE.transfers, JSON.stringify(transfers)) }, [transfers])
   useEffect(() => { localStorage.setItem(STORAGE.settings, JSON.stringify(settings)) }, [settings])
   useEffect(() => { localStorage.setItem(STORAGE.commitments, JSON.stringify(commitments)) }, [commitments])
-  useEffect(() => { localStorage.setItem(STORAGE.categories, JSON.stringify(categories)) }, [categories])
 
   const today          = new Date()
   const todayKey       = today.toISOString().slice(0, 10)
@@ -455,13 +427,18 @@ export default function App() {
     if (!localDataLoaded || migrationStarted.current) return
 
     migrationStarted.current = true
-    const migrateLocalData = async () => {
+        const migrateLocalData = async () => {
       setSyncStatus('Syncing')
       try {
         const localPaid = safeParse(localStorage.getItem(`${STORAGE.commitmentPaidPrefix}${currentMonthKey}`), {})
         const seedIfEmpty = async (collectionName, items) => {
-          const snapshot = await getDocs(collectionRef(collectionName))
-          if (snapshot.empty && items.length) await syncArrayCollection(collectionName, items)
+          // Read the collection once via onSnapshot and unsubscribe immediately.
+          const { snapshot, unsub } = await onceCollectionSnapshot(collectionRef(collectionName))
+          try {
+            if (snapshot.empty && items.length) await syncArrayCollection(collectionName, items)
+          } finally {
+            if (typeof unsub === 'function') unsub()
+          }
         }
 
         await Promise.all([
@@ -471,20 +448,31 @@ export default function App() {
           seedIfEmpty(FIRESTORE_COLLECTIONS.commitments, commitments),
         ])
 
-        const settingsSnapshot = await getDocs(collectionRef(FIRESTORE_COLLECTIONS.settings))
-        if (settingsSnapshot.empty) {
-          await upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), {
-            ...settings,
-            categories: normalizeCategories(categories),
-          })
+        // Ensure settings doc exists using a one-time snapshot check.
+        {
+          const { snapshot, unsub } = await onceCollectionSnapshot(collectionRef(FIRESTORE_COLLECTIONS.settings))
+          try {
+            if (snapshot.empty) {
+              await upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), settings)
+            }
+          } finally {
+            if (typeof unsub === 'function') unsub()
+          }
         }
 
-        const paidSnapshot = await getDocs(collectionRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus))
-        if (paidSnapshot.empty && Object.keys(localPaid).length) {
-          await upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
-            month: currentMonthKey,
-            paid: cleanRecord(localPaid),
-          })
+        // Ensure commitmentPaidStatus for current month exists if local data present.
+        {
+          const { snapshot, unsub } = await onceCollectionSnapshot(collectionRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus))
+          try {
+            if (snapshot.empty && Object.keys(localPaid).length) {
+              await upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
+                month: currentMonthKey,
+                paid: cleanRecord(localPaid),
+              })
+            }
+          } finally {
+            if (typeof unsub === 'function') unsub()
+          }
         }
 
         setFirestoreReady(true)
@@ -496,7 +484,7 @@ export default function App() {
     }
 
     migrateLocalData()
-  }, [accounts, categories, commitments, currentMonthKey, expenses, localDataLoaded, settings, transfers])
+  }, [accounts, commitments, currentMonthKey, expenses, localDataLoaded, settings, transfers])
 
   useEffect(() => {
     if (!firebaseEnabled || !db || !firestoreReady) return undefined
@@ -531,13 +519,15 @@ export default function App() {
         setCommitments(nextCommitments.length ? sortCommitments(nextCommitments) : DEFAULT_COMMITMENTS)
         setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
       }, () => setSyncStatus('Offline')),
-      onSnapshot(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), (snapshot) => {
-        if (snapshot.exists()) {
-          const nextSettings = { ...DEFAULT_SETTINGS, ...snapshot.data() }
-          const nextCategories = normalizeCategories(nextSettings.categories || CATEGORIES)
-          setSettings({ ...nextSettings, categories: nextCategories })
-          setCategories(nextCategories)
-          setBudgetInput(String(nextSettings.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
+      onSnapshot(collectionRef(FIRESTORE_COLLECTIONS.settings), (snapshot) => {
+        if (!snapshot.empty) {
+          // Prefer a doc named 'app' if present, otherwise pick the first doc
+          const appDoc = snapshot.docs.find(d => d.id === 'app') || snapshot.docs[0]
+          if (appDoc) {
+            const nextSettings = { ...DEFAULT_SETTINGS, ...appDoc.data() }
+            setSettings(nextSettings)
+            setBudgetInput(String(nextSettings.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
+          }
         }
         setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
       }, () => setSyncStatus('Offline')),
@@ -560,21 +550,17 @@ export default function App() {
     }
   }, [])
 
-  const spendingExpenses = useMemo(
-    () => expenses.filter(e => !isExcludedExpense(e)),
-    [expenses]
-  )
-  const currentMonthSpendingExpenses = useMemo(
-    () => spendingExpenses.filter(e => getMonthKey(e.date) === currentMonthKey),
-    [spendingExpenses, currentMonthKey]
+  const currentMonthExpenses = useMemo(
+    () => expenses.filter(e => getMonthKey(e.date) === currentMonthKey),
+    [expenses, currentMonthKey]
   )
   const todayTotal = useMemo(
-    () => currentMonthSpendingExpenses.filter(e => e.date === todayKey).reduce((s, e) => s + Number(e.amount), 0),
-    [currentMonthSpendingExpenses, todayKey]
+    () => currentMonthExpenses.filter(e => e.date === todayKey).reduce((s, e) => s + Number(e.amount), 0),
+    [currentMonthExpenses, todayKey]
   )
   const monthTotal = useMemo(
-    () => currentMonthSpendingExpenses.reduce((s, e) => s + Number(e.amount), 0),
-    [currentMonthSpendingExpenses]
+    () => currentMonthExpenses.reduce((s, e) => s + Number(e.amount), 0),
+    [currentMonthExpenses]
   )
   const totalBalance = useMemo(() => accounts.reduce((s, a) => s + Number(a.balance), 0), [accounts])
   const activeCommitments = useMemo(
@@ -585,75 +571,52 @@ export default function App() {
     () => activeCommitments.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     [activeCommitments]
   )
-  const effectiveMonthlyBudget = commitmentsTotal
+  const paidCommitmentsTotal = useMemo(
+    () => activeCommitments.reduce((sum, item) => (
+      isPaidCommitment(paidCommitments, item.id) ? sum + Number(item.amount || 0) : sum
+    ), 0),
+    [activeCommitments, paidCommitments]
+  )
+  const remainingCommitments = Math.max(commitmentsTotal - paidCommitmentsTotal, 0)
+  const effectiveMonthlyBudget = Number(settings.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget)
   const remainingBudget = Math.max(effectiveMonthlyBudget - monthTotal, 0)
+  const budgetUsage = effectiveMonthlyBudget > 0 ? Math.min(100, (monthTotal / effectiveMonthlyBudget) * 100) : 0
+  const commitmentProgress = commitmentsTotal > 0 ? Math.min(100, (paidCommitmentsTotal / commitmentsTotal) * 100) : 0
+  const unpaidCommitments = activeCommitments.filter(item => !isPaidCommitment(paidCommitments, item.id))
   const todayDay = today.getDate()
-  const commitmentAnalytics = (() => {
-    const items = activeCommitments.map((item) => {
-      const amount = Number(item.amount || 0)
-      const dueDay = Number(item.dueDay || 1)
-      const paid = Boolean(paidCommitments[item.id])
-      const daysUntilDue = dueDay - todayDay
-      const status = paid
-        ? 'Paid'
-        : daysUntilDue < 0
-          ? 'Overdue'
-          : daysUntilDue <= 3
-            ? 'Due soon'
-            : 'Unpaid'
-
-      return { ...item, amount, dueDay, paid, daysUntilDue, status }
-    })
-    const paidItems = items.filter(item => item.paid)
-    const unpaidItems = items.filter(item => !item.paid)
-    const overdueItems = unpaidItems.filter(item => item.status === 'Overdue')
-    const dueSoonItems = unpaidItems.filter(item => item.status === 'Due soon')
-    const paidTotal = paidItems.reduce((sum, item) => sum + item.amount, 0)
-    const remainingTotal = Math.max(commitmentsTotal - paidTotal, 0)
-    const nextDueItem = unpaidItems
-      .slice()
-      .sort((a, b) => a.daysUntilDue - b.daysUntilDue || a.dueDay - b.dueDay || a.name.localeCompare(b.name))[0]
-    const progress = commitmentsTotal > 0 ? Math.min(100, (paidTotal / commitmentsTotal) * 100) : 0
-
-    return {
-      paidCount: paidItems.length,
-      paidTotal,
-      dueSoonCount: dueSoonItems.length,
-      overdueCount: overdueItems.length,
-      remainingTotal,
-      nextDueItem,
-      progress,
-    }
-  })()
-  const commitmentProgress = commitmentAnalytics.progress
-  const commitmentSummaryStatus = activeCommitments.length > 0 && commitmentAnalytics.paidCount === activeCommitments.length
+  const hasOverdueCommitment = unpaidCommitments.some(item => todayDay > Number(item.dueDay || 1))
+  const hasDueSoonCommitment = unpaidCommitments.some(item => {
+    const dueDay = Number(item.dueDay || 1)
+    return dueDay >= todayDay && dueDay - todayDay <= 3
+  })
+  const commitmentSummaryStatus = activeCommitments.length > 0 && unpaidCommitments.length === 0
     ? 'All clear'
-    : commitmentAnalytics.overdueCount > 0
+    : hasOverdueCommitment
       ? 'Overdue'
-      : commitmentAnalytics.dueSoonCount > 0
+      : hasDueSoonCommitment
         ? 'Due soon'
         : 'Safe zone'
   const isCommitmentRisk = commitmentSummaryStatus === 'Overdue' || commitmentSummaryStatus === 'Due soon'
-  const dailyTotals = useMemo(() => sumByDate(spendingExpenses), [spendingExpenses])
+  const dailyTotals = useMemo(() => sumByDate(expenses), [expenses])
   const todaySparkline = useMemo(() => {
-    const values = currentMonthSpendingExpenses
+    const values = currentMonthExpenses
       .filter(e => e.date === todayKey)
       .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
       .map(e => Number(e.amount || 0))
     return values.length ? values : [0, 0, 0, 0, 0, 0, 0]
-  }, [currentMonthSpendingExpenses, todayKey])
+  }, [currentMonthExpenses, todayKey])
   const monthBarValues = useMemo(() => {
-    const activeDays = Object.entries(sumByDate(currentMonthSpendingExpenses))
+    const activeDays = Object.entries(sumByDate(currentMonthExpenses))
       .filter(([, total]) => total > 0)
       .sort(([a], [b]) => new Date(a) - new Date(b))
       .slice(-10)
       .map(([, total]) => total)
     return activeDays.length ? activeDays : [0, 0, 0, 0, 0, 0, 0]
-  }, [currentMonthSpendingExpenses])
+  }, [currentMonthExpenses])
   const recentDayKeys = useMemo(() => getLastDateKeys(7, today), [todayKey])
   const transactionSparkline = useMemo(
-    () => recentDayKeys.map((key) => spendingExpenses.filter(e => e.date === key).length || dailyTotals[key] || 0),
-    [dailyTotals, spendingExpenses, recentDayKeys]
+    () => recentDayKeys.map((key) => expenses.filter(e => e.date === key).length || dailyTotals[key] || 0),
+    [dailyTotals, expenses, recentDayKeys]
   )
   const dashboardAccounts = useMemo(() => {
     const featured = accounts.filter(a => a.id === 'hlb_ft' || a.id === 'mbb_ml')
@@ -667,13 +630,13 @@ export default function App() {
   const reportOptions = useMemo(buildMonthOptions, [])
 
   const reportExpenses = useMemo(() =>
-    spendingExpenses.filter(e => {
+    expenses.filter(e => {
       const mok = getMonthKey(e.date) === reportMonth
       const pok = reportPerson  === 'All' || e.person    === reportPerson
       const aok = reportAccount === 'All' || e.accountId === reportAccount
       return mok && pok && aok
     }),
-    [spendingExpenses, reportMonth, reportPerson, reportAccount]
+    [expenses, reportMonth, reportPerson, reportAccount]
   )
   const reportTotal       = useMemo(() => reportExpenses.reduce((s, e) => s + Number(e.amount), 0), [reportExpenses])
   const reportByCategory  = useMemo(() => {
@@ -716,16 +679,7 @@ export default function App() {
     e.preventDefault()
     const amount = Number(form.amount)
     if (!form.date || !form.accountId || !form.category || isNaN(amount) || amount <= 0) { alert('Please fill all fields with a valid amount.'); return }
-    const record = {
-      id: editId || `${Date.now()}`,
-      date: form.date,
-      person: form.person,
-      accountId: form.accountId,
-      category: form.category,
-      amount,
-      notes: form.notes.trim(),
-      excludedFromTotals: String(form.category || '').toLowerCase() === 'business',
-    }
+    const record = { id: editId || `${Date.now()}`, date: form.date, person: form.person, accountId: form.accountId, category: form.category, amount, notes: form.notes.trim() }
     let nextExpenses
     let nextAccounts = accounts
     if (editId) {
@@ -748,45 +702,6 @@ export default function App() {
   }
 
   const handleQuickAmount = (v) => setForm(f => ({ ...f, amount: String(Number(f.amount || 0) + v) }))
-
-  const openCategoryModal = () => {
-    setNewCategoryName('')
-    setCategoryError('')
-    setShowCategoryModal(true)
-  }
-
-  const handleCategorySelect = (value) => {
-    if (value === ADD_CATEGORY_VALUE) {
-      openCategoryModal()
-      return
-    }
-    setForm(f => ({ ...f, category: value }))
-  }
-
-  const handleSaveNewCategory = (event) => {
-    event.preventDefault()
-    const nextCategory = newCategoryName.trim()
-    const duplicate = categories.some(category => category.toLowerCase() === nextCategory.toLowerCase())
-
-    if (!nextCategory) {
-      setCategoryError('Enter a category name.')
-      return
-    }
-    if (duplicate) {
-      setCategoryError('That category already exists.')
-      return
-    }
-
-    const nextCategories = normalizeCategories([...categories, nextCategory])
-    const nextSettings = { ...settings, categories: nextCategories }
-    setCategories(nextCategories)
-    setSettings(nextSettings)
-    setForm(f => ({ ...f, category: nextCategory }))
-    syncSettingsDoc(nextSettings, nextCategories)
-    setShowCategoryModal(false)
-    setNewCategoryName('')
-    setCategoryError('')
-  }
 
   const handleEditExpense = (expense) => {
     setEditId(expense.id)
@@ -839,7 +754,7 @@ export default function App() {
   }
 
   const handleExportBackup = () => {
-    const blob = new Blob([JSON.stringify({ settings: { ...settings, categories }, expenses, accounts, transfers, commitments, categories }, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ settings, expenses, accounts, transfers, commitments }, null, 2)], { type: 'application/json' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob); link.download = 'duitlife-backup.json'; link.click(); URL.revokeObjectURL(link.href)
   }
@@ -852,17 +767,14 @@ export default function App() {
       setAccounts(Array.isArray(parsed.accounts) ? parsed.accounts : DEFAULT_ACCOUNTS)
       setTransfers(Array.isArray(parsed.transfers) ? parsed.transfers : [])
       setCommitments(Array.isArray(parsed.commitments) ? parsed.commitments : DEFAULT_COMMITMENTS)
-      const restoredCategories = normalizeCategories(parsed.categories || parsed.settings?.categories || CATEGORIES)
-      setCategories(restoredCategories)
-      setSettings({ ...DEFAULT_SETTINGS, ...(parsed.settings || {}), categories: restoredCategories })
+      setSettings({ ...DEFAULT_SETTINGS, ...(parsed.settings || {}) })
       setBudgetInput(String(parsed.settings?.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
       syncFullData({
         expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
         accounts: Array.isArray(parsed.accounts) ? parsed.accounts : DEFAULT_ACCOUNTS,
         transfers: Array.isArray(parsed.transfers) ? parsed.transfers : [],
         commitments: Array.isArray(parsed.commitments) ? parsed.commitments : DEFAULT_COMMITMENTS,
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}), categories: restoredCategories },
-        categories: restoredCategories,
+        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
         paidCommitments,
       })
       setRestoreText(''); alert('Backup restored.')
@@ -871,14 +783,13 @@ export default function App() {
 
   const handleResetAll = () => {
     if (!window.confirm('Reset all data?')) return
-    setExpenses([]); setAccounts(DEFAULT_ACCOUNTS); setTransfers([]); setCommitments(DEFAULT_COMMITMENTS); setPaidCommitments({}); setCategories(CATEGORIES); setSettings({ ...DEFAULT_SETTINGS, categories: CATEGORIES })
+    setExpenses([]); setAccounts(DEFAULT_ACCOUNTS); setTransfers([]); setCommitments(DEFAULT_COMMITMENTS); setPaidCommitments({}); setSettings(DEFAULT_SETTINGS)
     syncFullData({
       expenses: [],
       accounts: DEFAULT_ACCOUNTS,
       transfers: [],
       commitments: DEFAULT_COMMITMENTS,
-      categories: CATEGORIES,
-      settings: { ...DEFAULT_SETTINGS, categories: CATEGORIES },
+      settings: DEFAULT_SETTINGS,
       paidCommitments: {},
     })
     setBudgetInput(String(DEFAULT_SETTINGS.monthlyBudget)); setPage('dashboard'); alert('App reset.')
@@ -894,15 +805,6 @@ export default function App() {
       accountId: accounts[0]?.id || 'cash',
       reminder: true,
     })
-  }
-
-  const getCommitmentStatus = (commitment) => {
-    if (paidCommitments[commitment.id]) return 'Paid'
-    const dueDay = Number(commitment.dueDay || 1)
-    const todayDay = today.getDate()
-    if (todayDay > dueDay) return 'Overdue'
-    if (dueDay - todayDay <= 3) return 'Due soon'
-    return 'Unpaid'
   }
 
   const handleEditCommitment = (commitment) => {
@@ -958,39 +860,19 @@ export default function App() {
     })
   }
 
-  const handleMarkCommitmentPaid = (commitment) => {
-    if (paidCommitments[commitment.id]) return
-    const amount = Number(commitment.amount || 0)
-    if (amount <= 0) {
-      alert('Set an amount before marking this paid.')
-      return
+  const toggleCommitmentPaid = (id) => {
+    const nextPaid = { ...paidCommitments }
+    if (isPaidCommitment(paidCommitments, id)) {
+      delete nextPaid[id]
+    } else {
+      nextPaid[id] = true
     }
-    const record = {
-      id: `${Date.now()}`,
-      date: todayKey,
-      person: 'Adam',
-      accountId: commitment.accountId || 'cash',
-      category: commitment.category || 'Bills & Utilities',
-      amount,
-      notes: commitment.name,
-    }
-    const nextExpenses = [record, ...expenses]
-    const nextAccounts = accounts.map(account =>
-      account.id === record.accountId ? { ...account, balance: Math.max(0, account.balance - amount) } : account
-    )
-    const nextPaid = { ...paidCommitments, [commitment.id]: true }
-    setExpenses(nextExpenses)
-    setAccounts(nextAccounts)
     setPaidCommitments(nextPaid)
     writeWithSyncStatus(async () => {
-      await Promise.all([
-        upsertDoc(docRef(FIRESTORE_COLLECTIONS.expenses, record.id), record),
-        syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextAccounts),
-        upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
-          month: currentMonthKey,
-          paid: cleanRecord(nextPaid),
-        }),
-      ])
+      await upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
+        month: currentMonthKey,
+        paid: cleanRecord(nextPaid),
+      })
     })
   }
 
@@ -1112,7 +994,7 @@ export default function App() {
                 <SparkLine
                   color="#9B7EC8"
                   type="progress"
-                  progress={effectiveMonthlyBudget > 0 ? monthTotal / effectiveMonthlyBudget : 0}
+                  progress={budgetUsage / 100}
                 />
               </article>
               <article className="stat-card">
@@ -1120,15 +1002,15 @@ export default function App() {
                   <div className="stat-icon-badge"><FileText size={20} aria-hidden="true"/></div>
                   <span className="stat-label">TRANSACTIONS</span>
                 </div>
-                <p className="stat-value">{currentMonthSpendingExpenses.length}</p>
+                <p className="stat-value">{currentMonthExpenses.length}</p>
                 <p className="stat-note">This month</p>
                 <SparkLine color="#6BA8D4" type="wave2" values={transactionSparkline}/>
               </article>
             </div>
 
-            {/* Commitments analytics card */}
+            {/* Budget ring card */}
             <article
-              className="card progress-card commitments-analytics-card"
+              className="card progress-card"
               role="button"
               tabIndex={0}
               onClick={() => setShowCommitments(true)}
@@ -1140,8 +1022,7 @@ export default function App() {
               <div className="progress-head">
                 <div>
                   <p className="eyebrow">Monthly Commitments</p>
-                  <h3>{formatRM(commitmentsTotal)}</h3>
-                  <p className="commitments-period">{getMonthLabel(currentMonthKey)}</p>
+                  <h3>{getMonthLabel(currentMonthKey)}</h3>
                 </div>
                 <BudgetRing pct={commitmentProgress}/>
               </div>
@@ -1151,50 +1032,19 @@ export default function App() {
                   background: commitmentProgress >= 90 ? 'linear-gradient(90deg,#E86B5A,#FF8C42)' : undefined
                 }}/>
               </div>
-              <div className="commitments-health">
+              <div className="progress-bottom">
                 <div className="safe-zone">
                   <div className={`safe-icon${isCommitmentRisk ? ' warning' : ''}`}>
                     {isCommitmentRisk ? <AlertTriangle size={22} aria-hidden="true"/> : <ShieldCheck size={22} aria-hidden="true"/>}
                   </div>
                   <div>
                     <p className="safe-label">{commitmentSummaryStatus}</p>
-                    <p className="safe-sub">{Math.round(commitmentProgress)}% complete</p>
+                    <p className="safe-sub">{daysLeftInMonth()} days left this month</p>
                   </div>
                 </div>
-                <p className="commitments-days-left">{daysLeftInMonth()} days left</p>
-              </div>
-              <div className="commitments-metrics">
-                <div>
-                  <span>Total</span>
-                  <strong>{activeCommitments.length}</strong>
-                </div>
-                <div>
-                  <span>Paid</span>
-                  <strong>{formatRMShort(commitmentAnalytics.paidTotal)}</strong>
-                </div>
-                <div>
-                  <span>Due soon</span>
-                  <strong>{commitmentAnalytics.dueSoonCount}</strong>
-                </div>
-                <div>
-                  <span>Overdue</span>
-                  <strong>{commitmentAnalytics.overdueCount}</strong>
-                </div>
-              </div>
-              <div className="commitments-next">
-                <div>
-                  <p className="commitments-next-label">Next due item</p>
-                  <p className="commitments-next-name">
-                    {commitmentAnalytics.nextDueItem ? commitmentAnalytics.nextDueItem.name : 'All paid'}
-                  </p>
-                </div>
-                <div className="commitments-next-amount">
-                  <strong>{formatRMShort(commitmentAnalytics.remainingTotal)}</strong>
-                  <span>
-                    {commitmentAnalytics.nextDueItem
-                      ? `due day ${commitmentAnalytics.nextDueItem.dueDay}`
-                      : 'remaining'}
-                  </span>
+                <div className="progress-right">
+                  <p className="progress-spent">{formatRM(paidCommitmentsTotal)} paid</p>
+                  <p className="progress-target">{formatRM(remainingCommitments)} remaining</p>
                 </div>
               </div>
             </article>
@@ -1212,7 +1062,7 @@ export default function App() {
               {dashboardAccounts.map(acc => (
                 <div key={acc.id} className="account-row" onClick={() => setPage('accounts')} style={{cursor:'pointer'}}>
                   <div className="account-left">
-                    <AccountBadge type={acc.type} name={acc.name}/>
+                    <AccountBadge type={acc.type}/>
                     <div>
                       <p className="account-name">{acc.name}</p>
                       <p className="account-owner">{acc.owner} · {acc.type}</p>
@@ -1255,7 +1105,6 @@ export default function App() {
                         <p className="expense-meta">
                           <span className="person-tag" data-person={ex.person}>{ex.person[0]}</span>
                           {new Date(ex.date).toLocaleDateString()} · {getAccountLabel(ex.accountId)}
-                          {isExcludedExpense(ex) && <span className="excluded-chip">Business - excluded</span>}
                         </p>
                       </div>
                     </div>
@@ -1301,9 +1150,8 @@ export default function App() {
 
               <label className="field-label">Category</label>
               <select className="text-input" value={form.category}
-                onChange={e => handleCategorySelect(e.target.value)}>
-                <option value={ADD_CATEGORY_VALUE}>+ Add New Category</option>
-                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
 
               <label className="field-label">Amount (RM)</label>
@@ -1348,7 +1196,6 @@ export default function App() {
                         <p className="expense-meta">
                           <span className="person-tag" data-person={ex.person}>{ex.person[0]}</span>
                           {new Date(ex.date).toLocaleDateString()} · {getAccountLabel(ex.accountId)}
-                          {isExcludedExpense(ex) && <span className="excluded-chip">Business - excluded</span>}
                         </p>
                       </div>
                     </div>
@@ -1451,10 +1298,10 @@ export default function App() {
             {accounts.map(acc => (
               <div key={acc.id} className="card account-edit-card">
                 <div className="account-edit-top">
-                  <AccountBadge type={acc.type} name={acc.name}/>
+                  <AccountBadge type={acc.type}/>
                   <div style={{flex:1}}>
                     <p className="account-name">{acc.name}</p>
-                    <p className="account-owner">{acc.type}</p>
+                    <p className="account-owner">{acc.owner} · {acc.type}</p>
                   </div>
                   <p className={`account-balance${acc.balance===0?' zero':''}`}>{formatRM(acc.balance)}</p>
                 </div>
@@ -1463,7 +1310,7 @@ export default function App() {
                     placeholder="Set new balance"
                     value={balanceEdits[acc.id] ?? ''}
                     onChange={e => setBalanceEdits(prev => ({ ...prev, [acc.id]: e.target.value }))}/>
-                  <button className="button button-primary account-update-button"
+                  <button className="button button-primary" style={{fontSize:12,padding:'9px 16px'}}
                     onClick={() => handleSaveBalance(acc.id)}>
                     <Check size={16} aria-hidden="true"/> Update
                   </button>
@@ -1529,51 +1376,6 @@ export default function App() {
         )}
       </main>
 
-      {showCategoryModal && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="category-title">
-          <form className="category-modal" onSubmit={handleSaveNewCategory}>
-            <div className="commitments-head">
-              <div>
-                <p className="eyebrow">Category</p>
-                <h2 id="category-title">Add New Category</h2>
-                <p className="commitments-sub">Create a category for future expenses.</p>
-              </div>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={() => {
-                  setShowCategoryModal(false)
-                  setNewCategoryName('')
-                  setCategoryError('')
-                }}
-                aria-label="Close category form"
-              >
-                <X size={18} aria-hidden="true" />
-              </button>
-            </div>
-
-            <label className="field-label" htmlFor="new-category">Category name</label>
-            <input
-              id="new-category"
-              className="text-input"
-              value={newCategoryName}
-              onChange={e => {
-                setNewCategoryName(e.target.value)
-                setCategoryError('')
-              }}
-              placeholder="e.g. School fees"
-              autoFocus
-            />
-            {categoryError && <p className="category-error">{categoryError}</p>}
-
-            <button type="submit" className="button button-primary category-save-button">
-              <Plus size={16} aria-hidden="true" />
-              Add category
-            </button>
-          </form>
-        </div>
-      )}
-
       {showCommitments && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="commitments-title">
           <section className="commitments-modal">
@@ -1590,7 +1392,7 @@ export default function App() {
 
             <div className="commitment-list">
               {commitments.map((commitment) => {
-                const status = getCommitmentStatus(commitment)
+                const isPaid = isPaidCommitment(paidCommitments, commitment.id)
                 return (
                   <article key={commitment.id} className="commitment-item">
                     <div className="commitment-main">
@@ -1603,10 +1405,9 @@ export default function App() {
                       </div>
                     </div>
                     <div className="commitment-actions">
-                      <span className={`commitment-status ${status.toLowerCase().replace(' ', '-')}`}>{status}</span>
-                      <button type="button" className="mini-button" onClick={() => handleMarkCommitmentPaid(commitment)} disabled={status === 'Paid'}>
-                        <Check size={12} aria-hidden="true" /> Paid
-                      </button>
+                      <button type="button" className={`mini-button commitment-toggle-button${status === 'Paid' ? ' paid' : ' unpaid'}`} onClick={() => toggleCommitmentPaid(commitment.id)}>
+  {status === 'Paid' ? 'Paid' : 'Unpaid'}
+</button>
                       <button type="button" className="mini-button" onClick={() => handleEditCommitment(commitment)}>
                         <Pencil size={12} aria-hidden="true" /> Edit
                       </button>
@@ -1671,7 +1472,7 @@ export default function App() {
                 value={commitmentForm.category}
                 onChange={e => setCommitmentForm(current => ({ ...current, category: e.target.value }))}
               >
-                {categories.map(category => <option key={category} value={category}>{category}</option>)}
+                {CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
               </select>
 
               <label className="field-label" htmlFor="commitment-account">Account</label>
