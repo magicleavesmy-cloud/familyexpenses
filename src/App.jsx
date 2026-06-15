@@ -12,7 +12,6 @@ import {
 import {
   Activity,
   AlertTriangle,
-  Banknote,
   BarChart3,
   Briefcase,
   Calendar,
@@ -39,7 +38,6 @@ import {
   ShoppingBag,
   ShoppingCart,
   Smile,
-  Smartphone,
   Star,
   Trash,
   Tv,
@@ -51,6 +49,12 @@ import {
   Building2,
 } from 'lucide-react'
 import { db, familyId, firebaseEnabled } from './firebase'
+import tngLogo from './assets/banks/tng.png'
+import affinLogo from './assets/banks/affin.png'
+import hongleongLogo from './assets/banks/hongleong.png'
+import rhbLogo from './assets/banks/rhb.png'
+import publicbankLogo from './assets/banks/publicbank.gif'
+import maybankLogo from './assets/banks/maybank.png'
 import './App.css'
 
 const DEFAULT_ACCOUNTS = [
@@ -68,6 +72,8 @@ const CATEGORIES = [
   'Bills & Utilities','Rent','Shopping','Family',
   'Kids','Health','Loan','Entertainment','Business','Other',
 ]
+
+const ADD_CATEGORY_VALUE = '__add_new_category__'
 
 const CATEGORY_META = {
   'Food & Drink':     { Icon: Utensils, bg: '#FFF0E0', color: '#FF8C42' },
@@ -105,6 +111,7 @@ const STORAGE = {
   transfers: 'duitlife_transfers',
   settings: 'duitlife_settings',
   commitments: 'duitlife_commitments',
+  categories: 'duitlife_categories',
   commitmentPaidPrefix: 'duitlife_commitmentPaid_',
 }
 
@@ -120,6 +127,18 @@ const FIRESTORE_COLLECTIONS = {
 const safeParse = (value, fallback) => {
   if (value === null || value === undefined) return fallback
   try { return JSON.parse(value) } catch { return fallback }
+}
+
+const normalizeCategories = (items = CATEGORIES) => {
+  const seen = new Set()
+  return [...CATEGORIES, ...(Array.isArray(items) ? items : [])]
+    .map(item => String(item || '').trim())
+    .filter((item) => {
+      const key = item.toLowerCase()
+      if (!item || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
 const formatRM = (v) => `RM${Number(v || 0).toFixed(2)}`
@@ -175,6 +194,9 @@ const sumByDate = (items) => {
   return totals
 }
 
+const isBusinessExpense = (expense) => String(expense?.category || '').toLowerCase() === 'business'
+const isExcludedExpense = (expense) => Boolean(expense?.excludedFromTotals) || isBusinessExpense(expense)
+
 const CatBadge = ({ category }) => {
   const meta = CATEGORY_META[category] || CATEGORY_META['Other']
   const Icon = meta.Icon
@@ -185,12 +207,30 @@ const CatBadge = ({ category }) => {
   )
 }
 
-const AccountBadge = ({ type }) => {
+const getBankLogo = (name = '') => {
+  const key = name.toLowerCase()
+
+  if (key.includes('hong') || key.includes('leong')) return hongleongLogo
+  if (key.includes('public')) return publicbankLogo
+  if (key.includes('affin')) return affinLogo
+  if (key.includes('maybank')) return maybankLogo
+  if (key.includes('rhb')) return rhbLogo
+  if (key.includes('tng') || key.includes('touch')) return tngLogo
+
+  return null
+}
+
+const AccountBadge = ({ type, name }) => {
+  const accountName = name || ''
   const cls = type === 'eWallet' ? 'ewallet' : type === 'Cash' ? 'cash' : 'bank'
-  const Icon = type === 'eWallet' ? Smartphone : type === 'Cash' ? Banknote : Building2
+  const logo = getBankLogo(accountName)
   return (
-    <div className={`account-badge ${cls}`}>
-      <Icon size={20} aria-hidden="true" />
+    <div className={`account-badge ${cls}${logo ? ' has-logo' : ''}`}>
+      {logo ? (
+        <img className="account-logo-img" src={logo} alt={accountName} />
+      ) : (
+        <Building2 size={20} aria-hidden="true" />
+      )}
     </div>
   )
 }
@@ -265,12 +305,16 @@ export default function App() {
   const [accounts, setAccounts]   = useState(DEFAULT_ACCOUNTS)
   const [transfers, setTransfers] = useState([])
   const [settings, setSettings]   = useState(DEFAULT_SETTINGS)
+  const [categories, setCategories] = useState(CATEGORIES)
   const [commitments, setCommitments] = useState(DEFAULT_COMMITMENTS)
   const [paidCommitments, setPaidCommitments] = useState({})
   const [syncStatus, setSyncStatus] = useState(firebaseEnabled ? 'Syncing' : 'Offline')
   const [firestoreReady, setFirestoreReady] = useState(false)
   const migrationStarted = useRef(false)
   const [showCommitments, setShowCommitments] = useState(false)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [categoryError, setCategoryError] = useState('')
   const [commitmentEditId, setCommitmentEditId] = useState(null)
   const [editId, setEditId]       = useState(null)
   const [form, setForm] = useState({
@@ -335,8 +379,11 @@ export default function App() {
     ])
   }
 
-  const syncSettingsDoc = (nextSettings) => writeWithSyncStatus(() =>
-    upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), nextSettings)
+  const syncSettingsDoc = (nextSettings, nextCategories = categories) => writeWithSyncStatus(() =>
+    upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), {
+      ...nextSettings,
+      categories: normalizeCategories(nextCategories),
+    })
   )
 
   const syncPaidStatusDoc = (monthKey, nextPaidStatus) => writeWithSyncStatus(() =>
@@ -352,7 +399,10 @@ export default function App() {
       syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextData.accounts || []),
       syncArrayCollection(FIRESTORE_COLLECTIONS.transfers, nextData.transfers || []),
       syncArrayCollection(FIRESTORE_COLLECTIONS.commitments, nextData.commitments || []),
-      upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), nextData.settings || DEFAULT_SETTINGS),
+      upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), {
+        ...(nextData.settings || DEFAULT_SETTINGS),
+        categories: normalizeCategories(nextData.categories || nextData.settings?.categories || categories),
+      }),
       upsertDoc(docRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus, currentMonthKey), {
         month: currentMonthKey,
         paid: cleanRecord(nextData.paidCommitments || {}),
@@ -366,11 +416,14 @@ export default function App() {
     const tr = safeParse(localStorage.getItem(STORAGE.transfers), [])
     const se = safeParse(localStorage.getItem(STORAGE.settings), DEFAULT_SETTINGS)
     const cm = safeParse(localStorage.getItem(STORAGE.commitments), DEFAULT_COMMITMENTS)
+    const ca = safeParse(localStorage.getItem(STORAGE.categories), se.categories || CATEGORIES)
+    const nextCategories = normalizeCategories(se.categories || ca)
     setExpenses(Array.isArray(ex) ? ex : [])
     setAccounts(Array.isArray(ac) && ac.length ? ac : DEFAULT_ACCOUNTS)
     setTransfers(Array.isArray(tr) ? tr : [])
     setCommitments(Array.isArray(cm) && cm.length ? cm : DEFAULT_COMMITMENTS)
-    setSettings({ ...DEFAULT_SETTINGS, ...se })
+    setCategories(nextCategories)
+    setSettings({ ...DEFAULT_SETTINGS, ...se, categories: nextCategories })
     setBudgetInput(String(se.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
     setLocalDataLoaded(true)
   }, [])
@@ -380,6 +433,7 @@ export default function App() {
   useEffect(() => { localStorage.setItem(STORAGE.transfers, JSON.stringify(transfers)) }, [transfers])
   useEffect(() => { localStorage.setItem(STORAGE.settings, JSON.stringify(settings)) }, [settings])
   useEffect(() => { localStorage.setItem(STORAGE.commitments, JSON.stringify(commitments)) }, [commitments])
+  useEffect(() => { localStorage.setItem(STORAGE.categories, JSON.stringify(categories)) }, [categories])
 
   const today          = new Date()
   const todayKey       = today.toISOString().slice(0, 10)
@@ -419,7 +473,10 @@ export default function App() {
 
         const settingsSnapshot = await getDocs(collectionRef(FIRESTORE_COLLECTIONS.settings))
         if (settingsSnapshot.empty) {
-          await upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), settings)
+          await upsertDoc(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), {
+            ...settings,
+            categories: normalizeCategories(categories),
+          })
         }
 
         const paidSnapshot = await getDocs(collectionRef(FIRESTORE_COLLECTIONS.commitmentPaidStatus))
@@ -439,7 +496,7 @@ export default function App() {
     }
 
     migrateLocalData()
-  }, [accounts, commitments, currentMonthKey, expenses, localDataLoaded, settings, transfers])
+  }, [accounts, categories, commitments, currentMonthKey, expenses, localDataLoaded, settings, transfers])
 
   useEffect(() => {
     if (!firebaseEnabled || !db || !firestoreReady) return undefined
@@ -477,7 +534,9 @@ export default function App() {
       onSnapshot(docRef(FIRESTORE_COLLECTIONS.settings, 'app'), (snapshot) => {
         if (snapshot.exists()) {
           const nextSettings = { ...DEFAULT_SETTINGS, ...snapshot.data() }
-          setSettings(nextSettings)
+          const nextCategories = normalizeCategories(nextSettings.categories || CATEGORIES)
+          setSettings({ ...nextSettings, categories: nextCategories })
+          setCategories(nextCategories)
           setBudgetInput(String(nextSettings.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
         }
         setSyncStatus(navigator.onLine ? 'Synced' : 'Offline')
@@ -501,17 +560,21 @@ export default function App() {
     }
   }, [])
 
-  const currentMonthExpenses = useMemo(
-    () => expenses.filter(e => getMonthKey(e.date) === currentMonthKey),
-    [expenses, currentMonthKey]
+  const spendingExpenses = useMemo(
+    () => expenses.filter(e => !isExcludedExpense(e)),
+    [expenses]
+  )
+  const currentMonthSpendingExpenses = useMemo(
+    () => spendingExpenses.filter(e => getMonthKey(e.date) === currentMonthKey),
+    [spendingExpenses, currentMonthKey]
   )
   const todayTotal = useMemo(
-    () => currentMonthExpenses.filter(e => e.date === todayKey).reduce((s, e) => s + Number(e.amount), 0),
-    [currentMonthExpenses, todayKey]
+    () => currentMonthSpendingExpenses.filter(e => e.date === todayKey).reduce((s, e) => s + Number(e.amount), 0),
+    [currentMonthSpendingExpenses, todayKey]
   )
   const monthTotal = useMemo(
-    () => currentMonthExpenses.reduce((s, e) => s + Number(e.amount), 0),
-    [currentMonthExpenses]
+    () => currentMonthSpendingExpenses.reduce((s, e) => s + Number(e.amount), 0),
+    [currentMonthSpendingExpenses]
   )
   const totalBalance = useMemo(() => accounts.reduce((s, a) => s + Number(a.balance), 0), [accounts])
   const activeCommitments = useMemo(
@@ -571,26 +634,26 @@ export default function App() {
         ? 'Due soon'
         : 'Safe zone'
   const isCommitmentRisk = commitmentSummaryStatus === 'Overdue' || commitmentSummaryStatus === 'Due soon'
-  const dailyTotals = useMemo(() => sumByDate(expenses), [expenses])
+  const dailyTotals = useMemo(() => sumByDate(spendingExpenses), [spendingExpenses])
   const todaySparkline = useMemo(() => {
-    const values = currentMonthExpenses
+    const values = currentMonthSpendingExpenses
       .filter(e => e.date === todayKey)
       .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
       .map(e => Number(e.amount || 0))
     return values.length ? values : [0, 0, 0, 0, 0, 0, 0]
-  }, [currentMonthExpenses, todayKey])
+  }, [currentMonthSpendingExpenses, todayKey])
   const monthBarValues = useMemo(() => {
-    const activeDays = Object.entries(sumByDate(currentMonthExpenses))
+    const activeDays = Object.entries(sumByDate(currentMonthSpendingExpenses))
       .filter(([, total]) => total > 0)
       .sort(([a], [b]) => new Date(a) - new Date(b))
       .slice(-10)
       .map(([, total]) => total)
     return activeDays.length ? activeDays : [0, 0, 0, 0, 0, 0, 0]
-  }, [currentMonthExpenses])
+  }, [currentMonthSpendingExpenses])
   const recentDayKeys = useMemo(() => getLastDateKeys(7, today), [todayKey])
   const transactionSparkline = useMemo(
-    () => recentDayKeys.map((key) => expenses.filter(e => e.date === key).length || dailyTotals[key] || 0),
-    [dailyTotals, expenses, recentDayKeys]
+    () => recentDayKeys.map((key) => spendingExpenses.filter(e => e.date === key).length || dailyTotals[key] || 0),
+    [dailyTotals, spendingExpenses, recentDayKeys]
   )
   const dashboardAccounts = useMemo(() => {
     const featured = accounts.filter(a => a.id === 'hlb_ft' || a.id === 'mbb_ml')
@@ -604,13 +667,13 @@ export default function App() {
   const reportOptions = useMemo(buildMonthOptions, [])
 
   const reportExpenses = useMemo(() =>
-    expenses.filter(e => {
+    spendingExpenses.filter(e => {
       const mok = getMonthKey(e.date) === reportMonth
       const pok = reportPerson  === 'All' || e.person    === reportPerson
       const aok = reportAccount === 'All' || e.accountId === reportAccount
       return mok && pok && aok
     }),
-    [expenses, reportMonth, reportPerson, reportAccount]
+    [spendingExpenses, reportMonth, reportPerson, reportAccount]
   )
   const reportTotal       = useMemo(() => reportExpenses.reduce((s, e) => s + Number(e.amount), 0), [reportExpenses])
   const reportByCategory  = useMemo(() => {
@@ -653,7 +716,16 @@ export default function App() {
     e.preventDefault()
     const amount = Number(form.amount)
     if (!form.date || !form.accountId || !form.category || isNaN(amount) || amount <= 0) { alert('Please fill all fields with a valid amount.'); return }
-    const record = { id: editId || `${Date.now()}`, date: form.date, person: form.person, accountId: form.accountId, category: form.category, amount, notes: form.notes.trim() }
+    const record = {
+      id: editId || `${Date.now()}`,
+      date: form.date,
+      person: form.person,
+      accountId: form.accountId,
+      category: form.category,
+      amount,
+      notes: form.notes.trim(),
+      excludedFromTotals: String(form.category || '').toLowerCase() === 'business',
+    }
     let nextExpenses
     let nextAccounts = accounts
     if (editId) {
@@ -676,6 +748,45 @@ export default function App() {
   }
 
   const handleQuickAmount = (v) => setForm(f => ({ ...f, amount: String(Number(f.amount || 0) + v) }))
+
+  const openCategoryModal = () => {
+    setNewCategoryName('')
+    setCategoryError('')
+    setShowCategoryModal(true)
+  }
+
+  const handleCategorySelect = (value) => {
+    if (value === ADD_CATEGORY_VALUE) {
+      openCategoryModal()
+      return
+    }
+    setForm(f => ({ ...f, category: value }))
+  }
+
+  const handleSaveNewCategory = (event) => {
+    event.preventDefault()
+    const nextCategory = newCategoryName.trim()
+    const duplicate = categories.some(category => category.toLowerCase() === nextCategory.toLowerCase())
+
+    if (!nextCategory) {
+      setCategoryError('Enter a category name.')
+      return
+    }
+    if (duplicate) {
+      setCategoryError('That category already exists.')
+      return
+    }
+
+    const nextCategories = normalizeCategories([...categories, nextCategory])
+    const nextSettings = { ...settings, categories: nextCategories }
+    setCategories(nextCategories)
+    setSettings(nextSettings)
+    setForm(f => ({ ...f, category: nextCategory }))
+    syncSettingsDoc(nextSettings, nextCategories)
+    setShowCategoryModal(false)
+    setNewCategoryName('')
+    setCategoryError('')
+  }
 
   const handleEditExpense = (expense) => {
     setEditId(expense.id)
@@ -728,7 +839,7 @@ export default function App() {
   }
 
   const handleExportBackup = () => {
-    const blob = new Blob([JSON.stringify({ settings, expenses, accounts, transfers, commitments }, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify({ settings: { ...settings, categories }, expenses, accounts, transfers, commitments, categories }, null, 2)], { type: 'application/json' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob); link.download = 'duitlife-backup.json'; link.click(); URL.revokeObjectURL(link.href)
   }
@@ -741,14 +852,17 @@ export default function App() {
       setAccounts(Array.isArray(parsed.accounts) ? parsed.accounts : DEFAULT_ACCOUNTS)
       setTransfers(Array.isArray(parsed.transfers) ? parsed.transfers : [])
       setCommitments(Array.isArray(parsed.commitments) ? parsed.commitments : DEFAULT_COMMITMENTS)
-      setSettings({ ...DEFAULT_SETTINGS, ...(parsed.settings || {}) })
+      const restoredCategories = normalizeCategories(parsed.categories || parsed.settings?.categories || CATEGORIES)
+      setCategories(restoredCategories)
+      setSettings({ ...DEFAULT_SETTINGS, ...(parsed.settings || {}), categories: restoredCategories })
       setBudgetInput(String(parsed.settings?.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
       syncFullData({
         expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
         accounts: Array.isArray(parsed.accounts) ? parsed.accounts : DEFAULT_ACCOUNTS,
         transfers: Array.isArray(parsed.transfers) ? parsed.transfers : [],
         commitments: Array.isArray(parsed.commitments) ? parsed.commitments : DEFAULT_COMMITMENTS,
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}), categories: restoredCategories },
+        categories: restoredCategories,
         paidCommitments,
       })
       setRestoreText(''); alert('Backup restored.')
@@ -757,13 +871,14 @@ export default function App() {
 
   const handleResetAll = () => {
     if (!window.confirm('Reset all data?')) return
-    setExpenses([]); setAccounts(DEFAULT_ACCOUNTS); setTransfers([]); setCommitments(DEFAULT_COMMITMENTS); setPaidCommitments({}); setSettings(DEFAULT_SETTINGS)
+    setExpenses([]); setAccounts(DEFAULT_ACCOUNTS); setTransfers([]); setCommitments(DEFAULT_COMMITMENTS); setPaidCommitments({}); setCategories(CATEGORIES); setSettings({ ...DEFAULT_SETTINGS, categories: CATEGORIES })
     syncFullData({
       expenses: [],
       accounts: DEFAULT_ACCOUNTS,
       transfers: [],
       commitments: DEFAULT_COMMITMENTS,
-      settings: DEFAULT_SETTINGS,
+      categories: CATEGORIES,
+      settings: { ...DEFAULT_SETTINGS, categories: CATEGORIES },
       paidCommitments: {},
     })
     setBudgetInput(String(DEFAULT_SETTINGS.monthlyBudget)); setPage('dashboard'); alert('App reset.')
@@ -1005,7 +1120,7 @@ export default function App() {
                   <div className="stat-icon-badge"><FileText size={20} aria-hidden="true"/></div>
                   <span className="stat-label">TRANSACTIONS</span>
                 </div>
-                <p className="stat-value">{currentMonthExpenses.length}</p>
+                <p className="stat-value">{currentMonthSpendingExpenses.length}</p>
                 <p className="stat-note">This month</p>
                 <SparkLine color="#6BA8D4" type="wave2" values={transactionSparkline}/>
               </article>
@@ -1097,7 +1212,7 @@ export default function App() {
               {dashboardAccounts.map(acc => (
                 <div key={acc.id} className="account-row" onClick={() => setPage('accounts')} style={{cursor:'pointer'}}>
                   <div className="account-left">
-                    <AccountBadge type={acc.type}/>
+                    <AccountBadge type={acc.type} name={acc.name}/>
                     <div>
                       <p className="account-name">{acc.name}</p>
                       <p className="account-owner">{acc.owner} · {acc.type}</p>
@@ -1140,6 +1255,7 @@ export default function App() {
                         <p className="expense-meta">
                           <span className="person-tag" data-person={ex.person}>{ex.person[0]}</span>
                           {new Date(ex.date).toLocaleDateString()} · {getAccountLabel(ex.accountId)}
+                          {isExcludedExpense(ex) && <span className="excluded-chip">Business - excluded</span>}
                         </p>
                       </div>
                     </div>
@@ -1185,8 +1301,9 @@ export default function App() {
 
               <label className="field-label">Category</label>
               <select className="text-input" value={form.category}
-                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                onChange={e => handleCategorySelect(e.target.value)}>
+                <option value={ADD_CATEGORY_VALUE}>+ Add New Category</option>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
 
               <label className="field-label">Amount (RM)</label>
@@ -1231,6 +1348,7 @@ export default function App() {
                         <p className="expense-meta">
                           <span className="person-tag" data-person={ex.person}>{ex.person[0]}</span>
                           {new Date(ex.date).toLocaleDateString()} · {getAccountLabel(ex.accountId)}
+                          {isExcludedExpense(ex) && <span className="excluded-chip">Business - excluded</span>}
                         </p>
                       </div>
                     </div>
@@ -1333,10 +1451,10 @@ export default function App() {
             {accounts.map(acc => (
               <div key={acc.id} className="card account-edit-card">
                 <div className="account-edit-top">
-                  <AccountBadge type={acc.type}/>
+                  <AccountBadge type={acc.type} name={acc.name}/>
                   <div style={{flex:1}}>
                     <p className="account-name">{acc.name}</p>
-                    <p className="account-owner">{acc.owner} · {acc.type}</p>
+                    <p className="account-owner">{acc.type}</p>
                   </div>
                   <p className={`account-balance${acc.balance===0?' zero':''}`}>{formatRM(acc.balance)}</p>
                 </div>
@@ -1410,6 +1528,51 @@ export default function App() {
           </section>
         )}
       </main>
+
+      {showCategoryModal && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="category-title">
+          <form className="category-modal" onSubmit={handleSaveNewCategory}>
+            <div className="commitments-head">
+              <div>
+                <p className="eyebrow">Category</p>
+                <h2 id="category-title">Add New Category</h2>
+                <p className="commitments-sub">Create a category for future expenses.</p>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => {
+                  setShowCategoryModal(false)
+                  setNewCategoryName('')
+                  setCategoryError('')
+                }}
+                aria-label="Close category form"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+
+            <label className="field-label" htmlFor="new-category">Category name</label>
+            <input
+              id="new-category"
+              className="text-input"
+              value={newCategoryName}
+              onChange={e => {
+                setNewCategoryName(e.target.value)
+                setCategoryError('')
+              }}
+              placeholder="e.g. School fees"
+              autoFocus
+            />
+            {categoryError && <p className="category-error">{categoryError}</p>}
+
+            <button type="submit" className="button button-primary category-save-button">
+              <Plus size={16} aria-hidden="true" />
+              Add category
+            </button>
+          </form>
+        </div>
+      )}
 
       {showCommitments && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="commitments-title">
@@ -1508,7 +1671,7 @@ export default function App() {
                 value={commitmentForm.category}
                 onChange={e => setCommitmentForm(current => ({ ...current, category: e.target.value }))}
               >
-                {CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+                {categories.map(category => <option key={category} value={category}>{category}</option>)}
               </select>
 
               <label className="field-label" htmlFor="commitment-account">Account</label>
