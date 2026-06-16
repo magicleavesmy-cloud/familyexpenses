@@ -514,6 +514,9 @@ textarea.text-input { resize: vertical; min-height: 72px; }
 .setting-actions     { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .setting-group       { padding: 14px 0; border-top: 1px solid rgba(160,140,100,0.1); display: flex; flex-direction: column; gap: 10px; }
 .setting-group h3    { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.restore-file-input  { display: none; }
+.restore-file-button { width: 100%; }
+.restore-message     { font-size: 12px; font-weight: 600; color: var(--text-secondary); line-height: 1.4; }
 
 /* ── Bottom Nav ── */
 .bottom-nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 430px; height: var(--nav-height); background: var(--bg-card); border-top: 1px solid rgba(160,140,100,0.1); display: flex; justify-content: space-around; align-items: center; padding: 6px 4px 14px; z-index: 100; box-shadow: 0 -4px 20px rgba(140,120,80,0.1); }

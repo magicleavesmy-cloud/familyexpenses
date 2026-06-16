@@ -308,6 +308,7 @@ export default function App() {
   const [budgetInput, setBudgetInput]   = useState(String(DEFAULT_SETTINGS.monthlyBudget))
   const [pinInputs, setPinInputs]       = useState({ current: '', next: '', confirm: '' })
   const [restoreText, setRestoreText]   = useState('')
+  const [restoreMessage, setRestoreMessage] = useState('')
   const [reportMonth, setReportMonth]   = useState(getMonthKey(new Date()))
   const [reportPerson, setReportPerson] = useState('All')
   const [reportAccount, setReportAccount] = useState('All')
@@ -782,26 +783,90 @@ export default function App() {
     link.href = URL.createObjectURL(blob); link.download = 'duitlife-backup.json'; link.click(); URL.revokeObjectURL(link.href)
   }
 
+  const parseBackupJson = (text) => {
+    if (!text.trim()) {
+      throw new Error('Choose a JSON backup file or paste backup JSON first.')
+    }
+
+    let parsed
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      throw new Error('This is not valid JSON. Please choose or paste a FamilyExpenses backup file.')
+    }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Backup must be a JSON object exported from FamilyExpenses.')
+    }
+
+    const hasBackupShape = ['settings', 'expenses', 'accounts', 'transfers', 'commitments'].some((key) => key in parsed)
+    if (!hasBackupShape) {
+      throw new Error('This JSON does not look like a FamilyExpenses backup.')
+    }
+
+    if (parsed.expenses !== undefined && !Array.isArray(parsed.expenses)) throw new Error('Invalid backup: expenses must be a list.')
+    if (parsed.accounts !== undefined && !Array.isArray(parsed.accounts)) throw new Error('Invalid backup: accounts must be a list.')
+    if (parsed.transfers !== undefined && !Array.isArray(parsed.transfers)) throw new Error('Invalid backup: transfers must be a list.')
+    if (parsed.commitments !== undefined && !Array.isArray(parsed.commitments)) throw new Error('Invalid backup: commitments must be a list.')
+    if (parsed.settings !== undefined && (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) {
+      throw new Error('Invalid backup: settings must be an object.')
+    }
+
+    return {
+      expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
+      accounts: Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : DEFAULT_ACCOUNTS,
+      transfers: Array.isArray(parsed.transfers) ? parsed.transfers : [],
+      commitments: Array.isArray(parsed.commitments) && parsed.commitments.length ? parsed.commitments : DEFAULT_COMMITMENTS,
+      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+    }
+  }
+
+  const handleRestoreFileChange = (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    setRestoreMessage('')
+
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.json')) {
+      setRestoreMessage('Please choose a .json backup file.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      const content = String(reader.result || '')
+      setRestoreText(content)
+      try {
+        parseBackupJson(content)
+        setRestoreMessage(`Loaded ${file.name}. Tap Restore JSON to restore it.`)
+      } catch (error) {
+        setRestoreMessage(error.message)
+      }
+    }
+    reader.onerror = () => setRestoreMessage('Could not read that file. Please try another JSON backup.')
+    reader.readAsText(file)
+  }
+
   const handleRestoreBackup = () => {
     try {
-      const parsed = JSON.parse(restoreText)
-      if (!parsed || typeof parsed !== 'object') throw new Error()
-      setExpenses(Array.isArray(parsed.expenses) ? parsed.expenses : [])
-      setAccounts(Array.isArray(parsed.accounts) ? parsed.accounts : DEFAULT_ACCOUNTS)
-      setTransfers(Array.isArray(parsed.transfers) ? parsed.transfers : [])
-      setCommitments(Array.isArray(parsed.commitments) ? parsed.commitments : DEFAULT_COMMITMENTS)
-      setSettings({ ...DEFAULT_SETTINGS, ...(parsed.settings || {}) })
-      setBudgetInput(String(parsed.settings?.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
+      const backup = parseBackupJson(restoreText)
+      setExpenses(backup.expenses)
+      setAccounts(backup.accounts)
+      setTransfers(backup.transfers)
+      setCommitments(backup.commitments)
+      setSettings(backup.settings)
+      setBudgetInput(String(backup.settings.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
       syncFullData({
-        expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
-        accounts: Array.isArray(parsed.accounts) ? parsed.accounts : DEFAULT_ACCOUNTS,
-        transfers: Array.isArray(parsed.transfers) ? parsed.transfers : [],
-        commitments: Array.isArray(parsed.commitments) ? parsed.commitments : DEFAULT_COMMITMENTS,
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+        ...backup,
         paidCommitments,
       })
-      setRestoreText(''); alert('Backup restored.')
-    } catch { alert('Invalid backup file.') }
+      setRestoreText('')
+      setRestoreMessage('Backup restored.')
+      alert('Backup restored.')
+    } catch (error) {
+      setRestoreMessage(error.message)
+      alert(error.message)
+    }
   }
 
   const handleResetAll = () => {
@@ -1380,9 +1445,18 @@ export default function App() {
                 <button className="button button-secondary" onClick={handleExportBackup}>
                   <Download size={16} aria-hidden="true"/> Export backup JSON
                 </button>
+                <label className="button button-secondary restore-file-button" htmlFor="restore-file">
+                  <Upload size={16} aria-hidden="true"/> Choose JSON file
+                </label>
+                <input id="restore-file" className="restore-file-input" type="file" accept=".json,application/json"
+                  onChange={handleRestoreFileChange}/>
                 <label className="field-label" htmlFor="restore-json">Restore backup</label>
                 <textarea id="restore-json" rows={4} className="text-input" value={restoreText}
-                  onChange={e => setRestoreText(e.target.value)} placeholder="Paste JSON backup here"/>
+                  onChange={e => {
+                    setRestoreText(e.target.value)
+                    setRestoreMessage('')
+                  }} placeholder="Paste JSON backup here"/>
+                {restoreMessage && <p className="restore-message">{restoreMessage}</p>}
                 <button className="button button-primary" onClick={handleRestoreBackup}>
                   <Upload size={16} aria-hidden="true"/> Restore JSON
                 </button>
