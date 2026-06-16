@@ -411,6 +411,18 @@ body {
   font-weight: 800;
   line-height: 1;
 }
+.updated-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--green-bg);
+  color: var(--green);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
 .expense-right  { display: flex; align-items: center; gap: 8px; }
 .expense-amount { font-size: 13px; font-weight: 800; color: var(--danger); }
 .expense-amount.income { color: var(--green); }
@@ -785,31 +797,31 @@ body {
 .header-actions {
   top: 18px;
   right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .logout-button,
 .header-actions .button {
-  min-height: 40px;
-  padding: 0 16px;
-  border-radius: 22px;
+  min-height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
   background: rgba(255, 248, 240, 0.9);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
-  box-shadow: 0 14px 28px rgba(32, 18, 9, 0.16);
+  gap: 4px;
+  box-shadow: 0 8px 18px rgba(32, 18, 9, 0.12);
 }
 
 .logout-button svg {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
 }
 
 .sync-pill {
-  position: absolute;
-  top: 62px;
-  right: 18px;
-  z-index: 10;
   min-height: 22px;
   padding: 0 9px;
   display: inline-flex;

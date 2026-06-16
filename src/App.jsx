@@ -206,6 +206,21 @@ const getTransactionAmountClass = (record) => {
   const type = getTransactionType(record)
   return type === 'income' ? ' income' : type === 'transfer' ? ' transfer' : ''
 }
+const formatTransactionDate = (record) => {
+  const value = record?.date || record?.createdAt
+  if (!value) return ''
+
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString()
+}
+const formatTransactionTime = (record) => {
+  if (!record?.createdAt) return ''
+
+  const date = new Date(record.createdAt)
+  return Number.isNaN(date.getTime())
+    ? ''
+    : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
 
 const CatBadge = ({ category }) => {
   const meta = CATEGORY_META[category] || CATEGORY_META['Other']
@@ -789,6 +804,11 @@ export default function App() {
     return getAccountLabel(record.accountId)
   }
 
+  const getTransactionMeta = (record) => [
+    formatTransactionDate(record),
+    formatTransactionTime(record),
+  ].filter(Boolean).join(' • ')
+
   const getLinkedAccount = (record) => {
     const accountName = String(record.accountName || record.account || '').trim().toLowerCase()
     return accounts.find(account => account.id === record.accountId)
@@ -872,6 +892,8 @@ export default function App() {
 
   const validateExpenseForm = () => {
     const type = form.type === 'income' ? 'income' : form.type === 'transfer' ? 'transfer' : 'expense'
+    const existingRecord = editId ? expenses.find(ex => ex.id === editId) || transfers.find(item => item.id === editId) : null
+    const timestamp = new Date().toISOString()
     const date = normalizeExpenseDate(form.date)
     const person = getPersonLabel(form.person)
     const accountId = resolveExpenseAccountId(form.accountId)
@@ -912,6 +934,8 @@ export default function App() {
         category: type === 'transfer' ? 'Transfer' : category,
         amount,
         notes: String(form.notes || '').trim(),
+        createdAt: existingRecord?.createdAt || timestamp,
+        ...(editId ? { updatedAt: timestamp } : {}),
       },
     }
   }
@@ -1330,8 +1354,8 @@ export default function App() {
           <button type="button" className="button button-secondary logout-button" onClick={() => setAuthenticated(false)}>
             <LogOut size={18} aria-hidden="true"/> Logout
           </button>
+          <div className={`sync-pill ${syncStatus.toLowerCase()}`}>{syncStatus}</div>
         </div>
-        <div className={`sync-pill ${syncStatus.toLowerCase()}`}>{syncStatus}</div>
       </header>
 
       {/* ── QUICK ACTIONS ── */}
@@ -1528,7 +1552,8 @@ export default function App() {
                         <p className="expense-title">{getExpenseDisplayTitle(ex)}</p>
                         <p className="expense-meta">
                           <span className="person-tag" data-person={getPersonLabel(ex.person)}>{getPersonInitial(ex.person)}</span>
-                          {new Date(ex.date).toLocaleDateString()} · {getTransactionAccountLabel(ex)}
+                          {getTransactionMeta(ex)}
+                          {ex.updatedAt && <span className="updated-chip">Updated just now</span>}
                         </p>
                       </div>
                     </div>
@@ -1667,7 +1692,8 @@ export default function App() {
                         <p className="expense-title">{getExpenseDisplayTitle(ex)}</p>
                         <p className="expense-meta">
                           <span className="person-tag" data-person={getPersonLabel(ex.person)}>{getPersonInitial(ex.person)}</span>
-                          {new Date(ex.date).toLocaleDateString()} · {getTransactionAccountLabel(ex)}
+                          {getTransactionMeta(ex)}
+                          {ex.updatedAt && <span className="updated-chip">Updated just now</span>}
                         </p>
                       </div>
                     </div>
