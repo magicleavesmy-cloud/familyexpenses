@@ -783,7 +783,17 @@ export default function App() {
     link.href = URL.createObjectURL(blob); link.download = 'duitlife-backup.json'; link.click(); URL.revokeObjectURL(link.href)
   }
 
-  const parseBackupJson = (text) => {
+  const getExpenseTitle = (expense) => String(
+    expense?.title ?? expense?.name ?? expense?.notes ?? expense?.category ?? ''
+  ).trim().toLowerCase()
+
+  const getExpenseDuplicateKey = (expense) => [
+    String(expense?.date ?? '').trim(),
+    Number(expense?.amount ?? 0).toFixed(2),
+    getExpenseTitle(expense),
+  ].join('|')
+
+  const parseImportedExpenses = (text) => {
     if (!text.trim()) {
       throw new Error('Choose a JSON backup file or paste backup JSON first.')
     }
@@ -795,30 +805,24 @@ export default function App() {
       throw new Error('This is not valid JSON. Please choose or paste a FamilyExpenses backup file.')
     }
 
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('Backup must be a JSON object exported from FamilyExpenses.')
+    const importedExpenses = Array.isArray(parsed) ? parsed : parsed?.expenses
+    if (!Array.isArray(importedExpenses)) {
+      throw new Error('Backup must be an expenses list or an object with an expenses list.')
     }
 
-    const hasBackupShape = ['settings', 'expenses', 'accounts', 'transfers', 'commitments'].some((key) => key in parsed)
-    if (!hasBackupShape) {
-      throw new Error('This JSON does not look like a FamilyExpenses backup.')
+    if (importedExpenses.some((expense) => !expense || typeof expense !== 'object' || Array.isArray(expense))) {
+      throw new Error('Invalid backup: every expense must be an object.')
     }
 
-    if (parsed.expenses !== undefined && !Array.isArray(parsed.expenses)) throw new Error('Invalid backup: expenses must be a list.')
-    if (parsed.accounts !== undefined && !Array.isArray(parsed.accounts)) throw new Error('Invalid backup: accounts must be a list.')
-    if (parsed.transfers !== undefined && !Array.isArray(parsed.transfers)) throw new Error('Invalid backup: transfers must be a list.')
-    if (parsed.commitments !== undefined && !Array.isArray(parsed.commitments)) throw new Error('Invalid backup: commitments must be a list.')
-    if (parsed.settings !== undefined && (!parsed.settings || typeof parsed.settings !== 'object' || Array.isArray(parsed.settings))) {
-      throw new Error('Invalid backup: settings must be an object.')
+    if (importedExpenses.some((expense) => !expense.date || Number.isNaN(Number(expense.amount)))) {
+      throw new Error('Invalid backup: every expense needs a date and amount.')
     }
 
-    return {
-      expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
-      accounts: Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : DEFAULT_ACCOUNTS,
-      transfers: Array.isArray(parsed.transfers) ? parsed.transfers : [],
-      commitments: Array.isArray(parsed.commitments) && parsed.commitments.length ? parsed.commitments : DEFAULT_COMMITMENTS,
-      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
-    }
+    return importedExpenses.map((expense, index) => ({
+      ...expense,
+      id: expense.id ? String(expense.id) : `import_${Date.now()}_${index}`,
+      amount: Number(expense.amount),
+    }))
   }
 
   const handleRestoreFileChange = (event) => {
@@ -837,7 +841,7 @@ export default function App() {
       const content = String(reader.result || '')
       setRestoreText(content)
       try {
-        parseBackupJson(content)
+        parseImportedExpenses(content)
         setRestoreMessage(`Loaded ${file.name}. Tap Restore JSON to restore it.`)
       } catch (error) {
         setRestoreMessage(error.message)
@@ -849,20 +853,42 @@ export default function App() {
 
   const handleRestoreBackup = () => {
     try {
-      const backup = parseBackupJson(restoreText)
-      setExpenses(backup.expenses)
-      setAccounts(backup.accounts)
-      setTransfers(backup.transfers)
-      setCommitments(backup.commitments)
-      setSettings(backup.settings)
-      setBudgetInput(String(backup.settings.monthlyBudget ?? DEFAULT_SETTINGS.monthlyBudget))
-      syncFullData({
-        ...backup,
-        paidCommitments,
+      const importedExpenses = parseImportedExpenses(restoreText)
+      const existingIds = new Set(expenses.map((expense) => String(expense.id || '')).filter(Boolean))
+      const existingKeys = new Set(expenses.map(getExpenseDuplicateKey))
+      const importIds = new Set()
+      const importKeys = new Set()
+      const uniqueExpenses = []
+      let skippedDuplicates = 0
+
+      importedExpenses.forEach((expense) => {
+        const id = String(expense.id || '')
+        const key = getExpenseDuplicateKey(expense)
+        const isDuplicate = (id && (existingIds.has(id) || importIds.has(id))) || existingKeys.has(key) || importKeys.has(key)
+
+        if (isDuplicate) {
+          skippedDuplicates += 1
+          return
+        }
+
+        uniqueExpenses.push(expense)
+        if (id) importIds.add(id)
+        importKeys.add(key)
       })
+
+      if (uniqueExpenses.length > 0) {
+        setExpenses(prev => [...prev, ...uniqueExpenses])
+        writeWithSyncStatus(async () => {
+          await Promise.all(uniqueExpenses.map((expense) => (
+            upsertDoc(docRef(FIRESTORE_COLLECTIONS.expenses, expense.id), expense)
+          )))
+        })
+      }
+
+      const message = `Imported ${uniqueExpenses.length} expenses. Skipped ${skippedDuplicates} duplicates.`
       setRestoreText('')
-      setRestoreMessage('Backup restored.')
-      alert('Backup restored.')
+      setRestoreMessage(message)
+      alert(message)
     } catch (error) {
       setRestoreMessage(error.message)
       alert(error.message)
