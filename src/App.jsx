@@ -189,9 +189,32 @@ const CatBadge = ({ category }) => {
   )
 }
 
-const AccountBadge = ({ type }) => {
+const getAccountLogo = (name = '') => {
+  const key = String(name).trim().toLowerCase()
+
+  if (key.includes('hong') || key.includes('leong') || key === 'hlb') return '/logos/hong-leong.png'
+  if (key.includes('public') || key === 'pbb') return '/logos/public-bank.gif'
+  if (key.includes('affin')) return '/logos/affin.png'
+  if (key.includes('tng') || key.includes('touch')) return '/logos/tng.png'
+  if (key.includes('maybank')) return '/logos/maybank.png'
+  if (key.includes('rhb')) return '/logos/rhb.png'
+
+  return null
+}
+
+const AccountBadge = ({ name, type }) => {
   const cls = type === 'eWallet' ? 'ewallet' : type === 'Cash' ? 'cash' : 'bank'
   const Icon = type === 'eWallet' ? Smartphone : type === 'Cash' ? Banknote : Building2
+  const logo = getAccountLogo(name)
+
+  if (logo) {
+    return (
+      <div className={`account-badge ${cls} has-logo`}>
+        <img className="account-logo-img" src={logo} alt={`${name} logo`} />
+      </div>
+    )
+  }
+
   return (
     <div className={`account-badge ${cls}`}>
       <Icon size={20} aria-hidden="true" />
@@ -1062,7 +1085,7 @@ export default function App() {
               {dashboardAccounts.map(acc => (
                 <div key={acc.id} className="account-row" onClick={() => setPage('accounts')} style={{cursor:'pointer'}}>
                   <div className="account-left">
-                    <AccountBadge type={acc.type}/>
+                    <AccountBadge name={acc.name} type={acc.type}/>
                     <div>
                       <p className="account-name">{acc.name}</p>
                       <p className="account-owner">{acc.owner} · {acc.type}</p>
@@ -1298,7 +1321,7 @@ export default function App() {
             {accounts.map(acc => (
               <div key={acc.id} className="card account-edit-card">
                 <div className="account-edit-top">
-                  <AccountBadge type={acc.type}/>
+                  <AccountBadge name={acc.name} type={acc.type}/>
                   <div style={{flex:1}}>
                     <p className="account-name">{acc.name}</p>
                     <p className="account-owner">{acc.owner} · {acc.type}</p>

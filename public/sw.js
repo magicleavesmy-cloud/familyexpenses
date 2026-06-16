@@ -1,4 +1,4 @@
-const CACHE_NAME = 'duitlife-pwa-v1'
+const CACHE_NAME = 'duitlife-pwa-v2'
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -7,7 +7,11 @@ const APP_SHELL = [
   '/apple-touch-icon.png',
   '/pwa-192.png',
   '/pwa-512.png',
-  '/hero-family.png'
+  '/hero-family.png',
+  '/logos/hong-leong.png',
+  '/logos/public-bank.gif',
+  '/logos/affin.png',
+  '/logos/tng.png'
 ]
 
 self.addEventListener('install', (event) => {
