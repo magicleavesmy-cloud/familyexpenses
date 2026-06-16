@@ -465,7 +465,7 @@ body {
   object-fit: contain;
 }
 .expense-title  { overflow: hidden; font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; text-overflow: ellipsis; white-space: nowrap; }
-.expense-meta   { font-size: 10px; font-weight: 500; color: var(--text-hint); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.expense-meta   { font-size: 10px; font-weight: 500; color: var(--text-hint); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .excluded-chip {
   display: inline-flex;
   align-items: center;
@@ -481,6 +481,7 @@ body {
 .updated-chip {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   min-height: 18px;
   padding: 2px 7px;
   border-radius: var(--radius-pill);
@@ -493,6 +494,7 @@ body {
 .business-chip {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   min-height: 18px;
   padding: 2px 7px;
   border-radius: var(--radius-pill);
@@ -518,18 +520,18 @@ body {
 }
 .recent-expense-meta {
   max-width: 100%;
-  flex-wrap: nowrap;
-  overflow: hidden;
-  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 .recent-expense-meta .person-tag,
 .recent-expense-meta .updated-chip {
   flex: 0 0 auto;
 }
 .transaction-time-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  font-size: 11px;
   white-space: nowrap;
 }
 .recent-expense-right {

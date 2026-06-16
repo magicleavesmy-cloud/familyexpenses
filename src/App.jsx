@@ -256,6 +256,11 @@ const formatDateTime = (value) => {
   const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   return `${day}/${month}/${year}, ${time}`
 }
+const wasUpdatedRecently = (value) => {
+  if (!value) return false
+  const updatedAt = new Date(value).getTime()
+  return Number.isFinite(updatedAt) && Date.now() - updatedAt < 5 * 60 * 1000
+}
 
 const CatBadge = ({ category }) => {
   const meta = CATEGORY_META[category] || CATEGORY_META['Other']
@@ -1742,7 +1747,7 @@ export default function App() {
                           <span className="person-tag" data-person={getPersonLabel(ex.person)}>{getPersonInitial(ex.person)}</span>
                           <span className="transaction-time-meta">{getTransactionMeta(ex)}</span>
                           {isBusinessExpenseRecord(ex) && <span className="business-chip">Business</span>}
-                          {ex.updatedAt && <span className="updated-chip">Updated just now</span>}
+                          {wasUpdatedRecently(ex.updatedAt) && <span className="updated-chip">Updated</span>}
                         </p>
                       </div>
                     </div>
@@ -1902,7 +1907,7 @@ export default function App() {
                           <span className="person-tag" data-person={getPersonLabel(ex.person)}>{getPersonInitial(ex.person)}</span>
                           {getTransactionMeta(ex)}
                           {isBusinessExpenseRecord(ex) && <span className="business-chip">Business</span>}
-                          {ex.updatedAt && <span className="updated-chip">Updated just now</span>}
+                          {wasUpdatedRecently(ex.updatedAt) && <span className="updated-chip">Updated</span>}
                         </p>
                       </div>
                     </div>
