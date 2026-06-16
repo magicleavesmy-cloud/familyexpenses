@@ -68,6 +68,12 @@ const CATEGORIES = [
   'Kids','Health','Loan','Entertainment','Business','Other',
 ]
 
+const INCOME_CATEGORIES = [
+  'Salary','Business Income','Allowance','Bonus','Refund','Gift','Other',
+]
+
+const TRANSACTION_FILTERS = ['All', 'Expenses', 'Income', 'Transfers']
+
 const CATEGORY_META = {
   'Food & Drink':     { Icon: Utensils, bg: '#FFF0E0', color: '#FF8C42' },
   'Groceries':        { Icon: ShoppingCart, bg: '#E3F5EC', color: '#6BBF8A' },
@@ -177,6 +183,28 @@ const sumByDate = (items) => {
 const isPaidCommitment = (paidCommitments, id) => {
   const value = paidCommitments[id]
   return value === true || (value && typeof value === 'object' && value.paid !== false)
+}
+
+const getPersonLabel = (person) => {
+  const label = String(person || 'Adam').trim()
+  return label || 'Adam'
+}
+
+const getPersonInitial = (person) => getPersonLabel(person).charAt(0).toUpperCase()
+
+const getExpenseDisplayTitle = (expense) => String(expense?.notes || '').trim() || expense?.category || 'Expense'
+
+const getTransactionType = (record) => record?.type === 'income' ? 'income' : record?.type === 'transfer' ? 'transfer' : 'expense'
+const isIncomeRecord = (record) => getTransactionType(record) === 'income'
+const isExpenseRecord = (record) => getTransactionType(record) === 'expense'
+const getTransactionAmountLabel = (record) => {
+  if (isIncomeRecord(record)) return `+${formatRM(record.amount)}`
+  if (getTransactionType(record) === 'transfer') return formatRM(record.amount)
+  return `-${formatRM(record.amount)}`
+}
+const getTransactionAmountClass = (record) => {
+  const type = getTransactionType(record)
+  return type === 'income' ? ' income' : type === 'transfer' ? ' transfer' : ''
 }
 
 const CatBadge = ({ category }) => {
@@ -301,17 +329,21 @@ export default function App() {
   const [commitmentEditId, setCommitmentEditId] = useState(null)
   const [editId, setEditId]       = useState(null)
   const [form, setForm] = useState({
+    type: 'expense',
     date: new Date().toISOString().slice(0, 10),
-    person: 'Adam', accountId: 'cash',
+    person: 'Adam', accountId: 'cash', toAccountId: '',
     category: 'Food & Drink', amount: '', notes: '',
   })
   const [budgetInput, setBudgetInput]   = useState(String(DEFAULT_SETTINGS.monthlyBudget))
   const [pinInputs, setPinInputs]       = useState({ current: '', next: '', confirm: '' })
   const [restoreText, setRestoreText]   = useState('')
   const [restoreMessage, setRestoreMessage] = useState('')
+  const [recentFilterDate, setRecentFilterDate] = useState('')
   const [reportMonth, setReportMonth]   = useState(getMonthKey(new Date()))
   const [reportPerson, setReportPerson] = useState('All')
   const [reportAccount, setReportAccount] = useState('All')
+  const [reportType, setReportType] = useState('All')
+  const [transactionFilter, setTransactionFilter] = useState('All')
   const [balanceEdits, setBalanceEdits] = useState({})
   const [commitmentForm, setCommitmentForm] = useState({
     name: '',
@@ -574,9 +606,17 @@ export default function App() {
     }
   }, [])
 
-  const currentMonthExpenses = useMemo(
+  const currentMonthTransactions = useMemo(
     () => expenses.filter(e => getMonthKey(e.date) === currentMonthKey),
     [expenses, currentMonthKey]
+  )
+  const currentMonthExpenses = useMemo(
+    () => currentMonthTransactions.filter(isExpenseRecord),
+    [currentMonthTransactions]
+  )
+  const currentMonthIncome = useMemo(
+    () => currentMonthTransactions.filter(isIncomeRecord),
+    [currentMonthTransactions]
   )
   const todayTotal = useMemo(
     () => currentMonthExpenses.filter(e => e.date === todayKey).reduce((s, e) => s + Number(e.amount), 0),
@@ -586,6 +626,11 @@ export default function App() {
     () => currentMonthExpenses.reduce((s, e) => s + Number(e.amount), 0),
     [currentMonthExpenses]
   )
+  const monthIncomeTotal = useMemo(
+    () => currentMonthIncome.reduce((s, e) => s + Number(e.amount), 0),
+    [currentMonthIncome]
+  )
+  const monthNetTotal = monthIncomeTotal - monthTotal
   const totalBalance = useMemo(() => accounts.reduce((s, a) => s + Number(a.balance), 0), [accounts])
   const activeCommitments = useMemo(
     () => commitments.filter(c => c.active !== false),
@@ -621,7 +666,7 @@ export default function App() {
         ? 'Due soon'
         : 'Safe zone'
   const isCommitmentRisk = commitmentSummaryStatus === 'Overdue' || commitmentSummaryStatus === 'Due soon'
-  const dailyTotals = useMemo(() => sumByDate(expenses), [expenses])
+  const dailyTotals = useMemo(() => sumByDate(expenses.filter(isExpenseRecord)), [expenses])
   const todaySparkline = useMemo(() => {
     const values = currentMonthExpenses
       .filter(e => e.date === todayKey)
@@ -639,7 +684,7 @@ export default function App() {
   }, [currentMonthExpenses])
   const recentDayKeys = useMemo(() => getLastDateKeys(7, today), [todayKey])
   const transactionSparkline = useMemo(
-    () => recentDayKeys.map((key) => expenses.filter(e => e.date === key).length || dailyTotals[key] || 0),
+    () => recentDayKeys.map((key) => expenses.filter(e => isExpenseRecord(e) && e.date === key).length || dailyTotals[key] || 0),
     [dailyTotals, expenses, recentDayKeys]
   )
   const dashboardAccounts = useMemo(() => {
@@ -651,18 +696,44 @@ export default function App() {
     () => [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 10),
     [expenses]
   )
+  const visibleRecentExpenses = useMemo(
+    () => recentFilterDate
+      ? [...expenses].filter((expense) => expense.date === recentFilterDate).sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')))
+      : recentExpenses,
+    [expenses, recentExpenses, recentFilterDate]
+  )
+  const recentFilterLabel = recentFilterDate
+    ? new Date(`${recentFilterDate}T00:00:00`).toLocaleDateString()
+    : ''
   const reportOptions = useMemo(buildMonthOptions, [])
 
-  const reportExpenses = useMemo(() =>
-    expenses.filter(e => {
+  const reportExpenses = useMemo(() => {
+    const transferItems = transfers.map((transfer) => ({
+      ...transfer,
+      type: 'transfer',
+      category: transfer.category || 'Transfer',
+      person: transfer.person || transfer.owner || 'Shared',
+      amount: Number(transfer.amount || 0),
+      accountId: transfer.accountId || transfer.fromAccountId || transfer.from || '',
+      toAccountId: transfer.toAccountId || transfer.to || '',
+      date: transfer.date || transfer.createdAt || getDateKey(new Date()),
+      notes: transfer.notes || 'Transfer',
+    }))
+
+    return [...expenses, ...transferItems].filter(e => {
       const mok = getMonthKey(e.date) === reportMonth
       const pok = reportPerson  === 'All' || e.person    === reportPerson
-      const aok = reportAccount === 'All' || e.accountId === reportAccount
-      return mok && pok && aok
-    }),
-    [expenses, reportMonth, reportPerson, reportAccount]
-  )
-  const reportTotal       = useMemo(() => reportExpenses.reduce((s, e) => s + Number(e.amount), 0), [reportExpenses])
+      const aok = reportAccount === 'All' || e.accountId === reportAccount || e.toAccountId === reportAccount
+      const tok = reportType === 'All'
+        || (reportType === 'Expenses' && isExpenseRecord(e))
+        || (reportType === 'Income' && isIncomeRecord(e))
+        || (reportType === 'Transfers' && getTransactionType(e) === 'transfer')
+      return mok && pok && aok && tok
+    })
+  }, [expenses, transfers, reportMonth, reportPerson, reportAccount, reportType])
+  const reportExpenseTotal = useMemo(() => reportExpenses.filter(isExpenseRecord).reduce((s, e) => s + Number(e.amount), 0), [reportExpenses])
+  const reportIncomeTotal = useMemo(() => reportExpenses.filter(isIncomeRecord).reduce((s, e) => s + Number(e.amount), 0), [reportExpenses])
+  const reportNetTotal = reportIncomeTotal - reportExpenseTotal
   const reportByCategory  = useMemo(() => {
     const t = {}
     reportExpenses.forEach(e => { t[e.category] = (t[e.category] || 0) + Number(e.amount) })
@@ -683,9 +754,75 @@ export default function App() {
     return Object.entries(t).sort((a, b) => b[1] - a[1])
   }, [reportExpenses, accounts])
 
+  const historyTransactions = useMemo(() => {
+    const expenseItems = expenses.map(item => ({ ...item, type: getTransactionType(item) }))
+    const transferItems = transfers.map((transfer) => ({
+      ...transfer,
+      type: 'transfer',
+      category: transfer.category || 'Transfer',
+      person: transfer.person || transfer.owner || 'Shared',
+      amount: Number(transfer.amount || 0),
+      accountId: transfer.accountId || transfer.fromAccountId || transfer.from || '',
+      date: transfer.date || transfer.createdAt || getDateKey(new Date()),
+      notes: transfer.notes || 'Transfer',
+    }))
+    const allItems = [...expenseItems, ...transferItems]
+    return allItems
+      .filter((item) => (
+        transactionFilter === 'All'
+        || (transactionFilter === 'Expenses' && getTransactionType(item) === 'expense')
+        || (transactionFilter === 'Income' && getTransactionType(item) === 'income')
+        || (transactionFilter === 'Transfers' && getTransactionType(item) === 'transfer')
+      ))
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+  }, [expenses, transfers, transactionFilter])
+
   const getAccountLabel = (id) => {
     const acc = accounts.find(a => a.id === id)
     return acc ? `${acc.name} (${acc.owner})` : id
+  }
+
+  const getTransactionAccountLabel = (record) => {
+    if (getTransactionType(record) === 'transfer') {
+      return `${getAccountLabel(record.accountId)} -> ${getAccountLabel(record.toAccountId)}`
+    }
+    return getAccountLabel(record.accountId)
+  }
+
+  const getLinkedAccount = (record) => {
+    const accountName = String(record.accountName || record.account || '').trim().toLowerCase()
+    return accounts.find(account => account.id === record.accountId)
+      || accounts.find(account => account.name.toLowerCase() === accountName)
+      || null
+  }
+
+  const TransactionAccountBadge = ({ transaction }) => {
+    const linkedAccount = getLinkedAccount(transaction)
+    const accountName = linkedAccount?.name || transaction.accountName || transaction.account || ''
+    const logo = linkedAccount?.logo || linkedAccount?.icon || getAccountLogo(accountName)
+    const isCash = linkedAccount?.type === 'Cash' || String(accountName).toLowerCase() === 'cash' || transaction.accountId === 'cash'
+
+    if (logo) {
+      return (
+        <div className="transaction-account-badge has-logo">
+          <img className="transaction-account-logo" src={logo} alt={`${accountName} logo`} />
+        </div>
+      )
+    }
+
+    if (isCash) {
+      return (
+        <div className="transaction-account-badge cash">
+          <Banknote size={17} aria-hidden="true" />
+        </div>
+      )
+    }
+
+    return (
+      <div className="transaction-account-badge fallback">
+        <Receipt size={17} aria-hidden="true" />
+      </div>
+    )
   }
 
   const handleLogin = (e) => {
@@ -696,24 +833,142 @@ export default function App() {
 
   const resetForm = () => {
     setEditId(null)
-    setForm({ date: new Date().toISOString().slice(0, 10), person: 'Adam', accountId: 'cash', category: 'Food & Drink', amount: '', notes: '' })
+    setForm({ type: 'expense', date: new Date().toISOString().slice(0, 10), person: 'Adam', accountId: 'cash', toAccountId: '', category: 'Food & Drink', amount: '', notes: '' })
+  }
+
+  const normalizeExpenseDate = (value) => {
+    const raw = String(value || '').trim()
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+
+    const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (slashMatch) {
+      const [, month, day, year] = slashMatch
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+
+    const parsed = new Date(raw)
+    if (!Number.isNaN(parsed.getTime())) return getDateKey(parsed)
+
+    return ''
+  }
+
+  const parseExpenseAmount = (value) => {
+    const normalized = String(value ?? '').trim().replace(',', '.')
+    return Number(normalized)
+  }
+
+  const resolveExpenseAccountId = (value) => {
+    const raw = String(value || '').trim()
+    if (!raw) return ''
+    if (accounts.some((account) => account.id === raw)) return raw
+
+    const match = accounts.find((account) => (
+      account.name.toLowerCase() === raw.toLowerCase()
+      || `${account.name} (${account.owner})`.toLowerCase() === raw.toLowerCase()
+    ))
+
+    return match?.id || raw
+  }
+
+  const validateExpenseForm = () => {
+    const type = form.type === 'income' ? 'income' : form.type === 'transfer' ? 'transfer' : 'expense'
+    const date = normalizeExpenseDate(form.date)
+    const person = getPersonLabel(form.person)
+    const accountId = resolveExpenseAccountId(form.accountId)
+    const toAccountId = resolveExpenseAccountId(form.toAccountId)
+    const category = String(form.category || '').trim()
+    const amount = parseExpenseAmount(form.amount)
+    const failures = []
+
+    if (!date) failures.push('date')
+    if (!person) failures.push('spender')
+    if (!accountId) failures.push('account')
+    if (type === 'transfer' && !toAccountId) failures.push('to account')
+    if (type === 'transfer' && accountId && toAccountId && accountId === toAccountId) failures.push('different accounts')
+    if (type !== 'transfer' && !category) failures.push('category')
+    if (!Number.isFinite(amount) || amount <= 0) failures.push('amount')
+
+    if (failures.length > 0) {
+      console.warn('Expense validation failed', {
+        failures,
+        form,
+        normalized: { type, date, person, accountId, toAccountId, category, amount },
+      })
+      return {
+        ok: false,
+        message: `Please check: ${failures.join(', ')}.`,
+      }
+    }
+
+    return {
+      ok: true,
+      record: {
+        id: editId || `${Date.now()}`,
+        type,
+        date,
+        person,
+        accountId,
+        toAccountId,
+        category: type === 'transfer' ? 'Transfer' : category,
+        amount,
+        notes: String(form.notes || '').trim(),
+      },
+    }
+  }
+
+  const applyTransactionToAccounts = (accountItems, record, direction = 1) => {
+    const amount = Number(record.amount || 0)
+    if (!amount || !record.accountId) return accountItems
+
+    if (getTransactionType(record) === 'transfer') {
+      return accountItems.map((account) => {
+        if (account.id === record.accountId) return { ...account, balance: Math.max(0, Number(account.balance || 0) - (amount * direction)) }
+        if (account.id === record.toAccountId) return { ...account, balance: Math.max(0, Number(account.balance || 0) + (amount * direction)) }
+        return account
+      })
+    }
+
+    return accountItems.map((account) => {
+      if (account.id !== record.accountId) return account
+      const delta = isIncomeRecord(record) ? amount * direction : -amount * direction
+      return { ...account, balance: Math.max(0, Number(account.balance || 0) + delta) }
+    })
   }
 
   const handleSaveExpense = (e) => {
     e.preventDefault()
-    const amount = Number(form.amount)
-    if (!form.date || !form.accountId || !form.category || isNaN(amount) || amount <= 0) { alert('Please fill all fields with a valid amount.'); return }
-    const record = { id: editId || `${Date.now()}`, date: form.date, person: form.person, accountId: form.accountId, category: form.category, amount, notes: form.notes.trim() }
+    const validation = validateExpenseForm()
+    if (!validation.ok) {
+      alert(validation.message)
+      return
+    }
+
+    const { record } = validation
+    if (record.type === 'transfer') {
+      const nextTransfers = [record, ...transfers]
+      const nextAccounts = applyTransactionToAccounts(accounts, record, 1)
+      setTransfers(nextTransfers)
+      setAccounts(nextAccounts)
+      writeWithSyncStatus(async () => {
+        await Promise.all([
+          upsertDoc(docRef(FIRESTORE_COLLECTIONS.transfers, record.id), record),
+          syncArrayCollection(FIRESTORE_COLLECTIONS.accounts, nextAccounts),
+        ])
+      })
+      resetForm(); setPage('dashboard')
+      return
+    }
+
     let nextExpenses
     let nextAccounts = accounts
     if (editId) {
       const old = expenses.find(ex => ex.id === editId)
-      if (old) nextAccounts = nextAccounts.map(a => a.id === old.accountId ? { ...a, balance: a.balance + Number(old.amount) } : a)
+      if (old) nextAccounts = applyTransactionToAccounts(nextAccounts, old, -1)
       nextExpenses = expenses.map(ex => ex.id === editId ? record : ex)
     } else {
       nextExpenses = [record, ...expenses]
     }
-    nextAccounts = nextAccounts.map(a => a.id === form.accountId ? { ...a, balance: Math.max(0, a.balance - amount) } : a)
+    nextAccounts = applyTransactionToAccounts(nextAccounts, record, 1)
     setExpenses(nextExpenses)
     setAccounts(nextAccounts)
     writeWithSyncStatus(async () => {
@@ -729,15 +984,24 @@ export default function App() {
 
   const handleEditExpense = (expense) => {
     setEditId(expense.id)
-    setForm({ date: expense.date, person: expense.person, accountId: expense.accountId, category: expense.category, amount: String(expense.amount), notes: expense.notes || '' })
+    setForm({
+      type: getTransactionType(expense),
+      date: expense.date,
+      person: expense.person,
+      accountId: expense.accountId,
+      toAccountId: expense.toAccountId || '',
+      category: expense.category,
+      amount: String(expense.amount),
+      notes: expense.notes || '',
+    })
     setPage('add')
   }
 
   const handleDeleteExpense = (id) => {
-    if (!window.confirm('Delete this expense?')) return
+    if (!window.confirm('Delete this transaction?')) return
     const ex = expenses.find(e => e.id === id)
     const nextAccounts = ex
-      ? accounts.map(a => a.id === ex.accountId ? { ...a, balance: a.balance + Number(ex.amount) } : a)
+      ? applyTransactionToAccounts(accounts, ex, -1)
       : accounts
     const nextExpenses = expenses.filter(e => e.id !== id)
     setAccounts(nextAccounts)
@@ -784,7 +1048,7 @@ export default function App() {
   }
 
   const getExpenseTitle = (expense) => String(
-    expense?.title ?? expense?.name ?? expense?.notes ?? expense?.category ?? ''
+    expense?.title ?? expense?.name ?? expense?.notes ?? expense?.category ?? 'Imported expense'
   ).trim().toLowerCase()
 
   const getExpenseDuplicateKey = (expense) => [
@@ -810,19 +1074,43 @@ export default function App() {
       throw new Error('Backup must be an expenses list or an object with an expenses list.')
     }
 
-    if (importedExpenses.some((expense) => !expense || typeof expense !== 'object' || Array.isArray(expense))) {
-      throw new Error('Invalid backup: every expense must be an object.')
-    }
+    const importBatchId = Date.now()
+    let skippedInvalid = 0
+    const expensesToImport = importedExpenses.reduce((items, expense, index) => {
+      if (!expense || typeof expense !== 'object' || Array.isArray(expense)) {
+        skippedInvalid += 1
+        return items
+      }
 
-    if (importedExpenses.some((expense) => !expense.date || Number.isNaN(Number(expense.amount)))) {
-      throw new Error('Invalid backup: every expense needs a date and amount.')
-    }
+      const amount = Number(expense.amount)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        skippedInvalid += 1
+        return items
+      }
 
-    return importedExpenses.map((expense, index) => ({
-      ...expense,
-      id: expense.id ? String(expense.id) : `import_${Date.now()}_${index}`,
-      amount: Number(expense.amount),
-    }))
+      const title = String(expense.title ?? expense.name ?? expense.notes ?? '').trim() || 'Imported expense'
+      const category = String(expense.category ?? '').trim() || 'Other'
+      const date = String(expense.date ?? '').trim() || getDateKey(new Date())
+      const person = getPersonLabel(expense.person)
+      const accountId = String(expense.accountId ?? '').trim() || accounts[0]?.id || 'cash'
+
+      items.push({
+        ...expense,
+        id: expense.id ? String(expense.id) : `import_${importBatchId}_${index}`,
+        title,
+        name: expense.name ?? title,
+        date,
+        person,
+        accountId,
+        category,
+        amount,
+        notes: String(expense.notes ?? title),
+      })
+
+      return items
+    }, [])
+
+    return { expenses: expensesToImport, skippedInvalid }
   }
 
   const handleRestoreFileChange = (event) => {
@@ -841,8 +1129,8 @@ export default function App() {
       const content = String(reader.result || '')
       setRestoreText(content)
       try {
-        parseImportedExpenses(content)
-        setRestoreMessage(`Loaded ${file.name}. Tap Restore JSON to restore it.`)
+        const preview = parseImportedExpenses(content)
+        setRestoreMessage(`Loaded ${file.name}. Found ${preview.expenses.length} expenses. Skipped ${preview.skippedInvalid} invalid.`)
       } catch (error) {
         setRestoreMessage(error.message)
       }
@@ -853,7 +1141,7 @@ export default function App() {
 
   const handleRestoreBackup = () => {
     try {
-      const importedExpenses = parseImportedExpenses(restoreText)
+      const { expenses: importedExpenses, skippedInvalid } = parseImportedExpenses(restoreText)
       const existingIds = new Set(expenses.map((expense) => String(expense.id || '')).filter(Boolean))
       const existingKeys = new Set(expenses.map(getExpenseDuplicateKey))
       const importIds = new Set()
@@ -885,7 +1173,8 @@ export default function App() {
         })
       }
 
-      const message = `Imported ${uniqueExpenses.length} expenses. Skipped ${skippedDuplicates} duplicates.`
+      const duplicateText = skippedDuplicates ? ` Skipped ${skippedDuplicates} duplicates.` : ''
+      const message = `Imported ${uniqueExpenses.length}, skipped ${skippedInvalid} invalid.${duplicateText}`
       setRestoreText('')
       setRestoreMessage(message)
       alert(message)
@@ -1047,17 +1336,26 @@ export default function App() {
 
       {/* ── QUICK ACTIONS ── */}
       <div className="quick-actions">
-        <button className="qa-btn" onClick={() => setPage('add')}>
+        <button className="qa-btn" onClick={() => {
+          setForm(f => ({ ...f, type: 'expense', category: CATEGORIES.includes(f.category) ? f.category : 'Food & Drink' }))
+          setPage('add')
+        }}>
           <div className="qa-icon qa-orange"><Plus size={19} aria-hidden="true"/></div>
           <span className="qa-label">Expense</span>
         </button>
-        <button className="qa-btn" onClick={() => setPage('accounts')}>
+        <button className="qa-btn" onClick={() => {
+          setForm(f => ({ ...f, type: 'income', category: INCOME_CATEGORIES.includes(f.category) ? f.category : 'Salary' }))
+          setPage('add')
+        }}>
+          <div className="qa-icon qa-green"><Download size={19} aria-hidden="true"/></div>
+          <span className="qa-label">Income</span>
+        </button>
+        <button className="qa-btn" onClick={() => {
+          setForm(f => ({ ...f, type: 'transfer', category: 'Transfer', toAccountId: f.toAccountId || accounts.find(a => a.id !== f.accountId)?.id || '' }))
+          setPage('add')
+        }}>
           <div className="qa-icon qa-blue"><Repeat2 size={19} aria-hidden="true"/></div>
           <span className="qa-label">Transfer</span>
-        </button>
-        <button className="qa-btn" onClick={() => setPage('settings')}>
-          <div className="qa-icon qa-purple"><Wallet size={19} aria-hidden="true"/></div>
-          <span className="qa-label">Budget</span>
         </button>
         <button className="qa-btn" onClick={handleExportBackup}>
           <div className="qa-icon qa-green"><Download size={19} aria-hidden="true"/></div>
@@ -1082,29 +1380,29 @@ export default function App() {
             <div className="stats-grid">
               <article className="stat-card">
                 <div className="stat-card-top">
-                  <div className="stat-icon-badge"><Calendar size={20} aria-hidden="true"/></div>
-                  <span className="stat-label">TODAY</span>
-                </div>
-                <p className="stat-value">{formatRM(todayTotal)}</p>
-                <p className="stat-note">Spent today</p>
-                <SparkLine color="#FFB347" type="wave1" values={todaySparkline}/>
-              </article>
-              <article className="stat-card">
-                <div className="stat-card-top">
                   <div className="stat-icon-badge"><BarChart3 size={20} aria-hidden="true"/></div>
-                  <span className="stat-label">THIS MONTH</span>
+                  <span className="stat-label">MONTH SPENT</span>
                 </div>
                 <p className="stat-value">{formatRM(monthTotal)}</p>
                 <p className="stat-note">{getMonthLabel(currentMonthKey)}</p>
-                <SparkLine color="#6BBF8A" type="bar" values={monthBarValues}/>
+                <SparkLine color="#FFB347" type="bar" values={monthBarValues}/>
+              </article>
+              <article className="stat-card">
+                <div className="stat-card-top">
+                  <div className="stat-icon-badge"><Download size={20} aria-hidden="true"/></div>
+                  <span className="stat-label">MONTH INCOME</span>
+                </div>
+                <p className="stat-value income-value">{formatRM(monthIncomeTotal)}</p>
+                <p className="stat-note">Received this month</p>
+                <SparkLine color="#6BBF8A" type="wave1" values={currentMonthIncome.map(e => Number(e.amount || 0))}/>
               </article>
               <article className="stat-card">
                 <div className="stat-card-top">
                   <div className="stat-icon-badge"><Wallet size={20} aria-hidden="true"/></div>
-                  <span className="stat-label">REMAINING</span>
+                  <span className="stat-label">NET BALANCE</span>
                 </div>
-                <p className="stat-value">{formatRM(remainingBudget)}</p>
-                <p className="stat-note">Left in budget</p>
+                <p className={`stat-value${monthNetTotal >= 0 ? ' income-value' : ''}`}>{formatRM(monthNetTotal)}</p>
+                <p className="stat-note">Income minus expenses</p>
                 <SparkLine
                   color="#9B7EC8"
                   type="progress"
@@ -1116,8 +1414,8 @@ export default function App() {
                   <div className="stat-icon-badge"><FileText size={20} aria-hidden="true"/></div>
                   <span className="stat-label">TRANSACTIONS</span>
                 </div>
-                <p className="stat-value">{currentMonthExpenses.length}</p>
-                <p className="stat-note">This month</p>
+                <p className="stat-value">{currentMonthTransactions.length}</p>
+                <p className="stat-note">Income and expenses</p>
                 <SparkLine color="#6BA8D4" type="wave2" values={transactionSparkline}/>
               </article>
             </div>
@@ -1200,30 +1498,42 @@ export default function App() {
                   <p className="eyebrow">Recent</p>
                   <h2>Last expenses</h2>
                 </div>
-                <button type="button" className="button button-primary" style={{fontSize:11,padding:'7px 14px'}} onClick={() => setPage('add')}>
-                  <Plus size={15} aria-hidden="true"/> Add
-                </button>
+                <div className="recent-actions">
+                  <label className="recent-date-control" htmlFor="recent-date-filter" aria-label="Filter recent expenses by date">
+                    <Calendar size={14} aria-hidden="true"/>
+                    <input id="recent-date-filter" type="date" value={recentFilterDate}
+                      onChange={e => setRecentFilterDate(e.target.value)}/>
+                  </label>
+                  {recentFilterDate && (
+                    <button type="button" className="recent-clear-button" onClick={() => setRecentFilterDate('')}>
+                      Clear
+                    </button>
+                  )}
+                  <button type="button" className="button button-primary" style={{fontSize:11,padding:'7px 14px'}} onClick={() => setPage('add')}>
+                    <Plus size={15} aria-hidden="true"/> Add
+                  </button>
+                </div>
               </div>
               <div className="expense-list">
-                {recentExpenses.length === 0 ? (
+                {visibleRecentExpenses.length === 0 ? (
                   <p className="empty-state">
                     <Smile className="empty-icon" size={32} aria-hidden="true"/>
-                    No expenses yet. Tap Add to start!
+                    {recentFilterDate ? `No expenses on ${recentFilterLabel}` : 'No expenses yet. Tap Add to start!'}
                   </p>
-                ) : recentExpenses.map(ex => (
+                ) : visibleRecentExpenses.map(ex => (
                   <div key={ex.id} className="expense-item">
                     <div className="expense-left">
-                      <CatBadge category={ex.category}/>
+                      <TransactionAccountBadge transaction={ex}/>
                       <div>
-                        <p className="expense-title">{ex.category}</p>
+                        <p className="expense-title">{getExpenseDisplayTitle(ex)}</p>
                         <p className="expense-meta">
-                          <span className="person-tag" data-person={ex.person}>{ex.person[0]}</span>
-                          {new Date(ex.date).toLocaleDateString()} · {getAccountLabel(ex.accountId)}
+                          <span className="person-tag" data-person={getPersonLabel(ex.person)}>{getPersonInitial(ex.person)}</span>
+                          {new Date(ex.date).toLocaleDateString()} · {getTransactionAccountLabel(ex)}
                         </p>
                       </div>
                     </div>
                     <div className="expense-right">
-                      <p className="expense-amount">-{formatRM(ex.amount)}</p>
+                      <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>
                       <button className="mini-button" onClick={() => handleEditExpense(ex)}>Edit</button>
                     </div>
                   </div>
@@ -1237,15 +1547,39 @@ export default function App() {
         {page === 'add' && (
           <section className="section-card">
             <div className="section-head">
-              <div><p className="eyebrow">Expense</p><h2>{editId ? 'Edit expense' : 'New expense'}</h2></div>
+              <div><p className="eyebrow">Transaction</p><h2>{editId ? 'Edit transaction' : form.type === 'income' ? 'New income' : 'New expense'}</h2></div>
               <span className="tag">RM</span>
             </div>
             <form className="card form-card" onSubmit={handleSaveExpense}>
+              <label className="field-label">Type</label>
+              <div className="person-selector">
+                {[
+                  ['expense', 'Expense'],
+                  ['income', 'Income'],
+                  ['transfer', 'Transfer'],
+                ].map(([type, label]) => (
+                  <button key={type} type="button"
+                    className={`person-btn${form.type === type ? ' active' : ''}`}
+                    onClick={() => setForm(f => ({
+                      ...f,
+                      type,
+                      category: type === 'income'
+                        ? (INCOME_CATEGORIES.includes(f.category) ? f.category : 'Salary')
+                        : type === 'transfer'
+                          ? 'Transfer'
+                          : (CATEGORIES.includes(f.category) ? f.category : 'Food & Drink'),
+                      toAccountId: type === 'transfer' ? (f.toAccountId || accounts.find(a => a.id !== f.accountId)?.id || '') : f.toAccountId,
+                    }))}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <label className="field-label">Date</label>
               <input type="date" className="text-input" value={form.date}
                 onChange={e => setForm(f => ({ ...f, date: e.target.value }))}/>
 
-              <label className="field-label">Who is spending?</label>
+              <label className="field-label">{form.type === 'income' ? 'Received by' : form.type === 'transfer' ? 'Handled by' : 'Who is spending?'}</label>
               <div className="person-selector">
                 {PERSONS.map(p => (
                   <button key={p} type="button"
@@ -1256,17 +1590,32 @@ export default function App() {
                 ))}
               </div>
 
-              <label className="field-label">Account</label>
+              <label className="field-label">{form.type === 'transfer' ? 'From account' : 'Account'}</label>
               <select className="text-input" value={form.accountId}
                 onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))}>
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.owner}) — {formatRM(a.balance)}</option>)}
               </select>
 
-              <label className="field-label">Category</label>
-              <select className="text-input" value={form.category}
-                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
+              {form.type === 'transfer' && (
+                <>
+                  <label className="field-label">To account</label>
+                  <select className="text-input" value={form.toAccountId}
+                    onChange={e => setForm(f => ({ ...f, toAccountId: e.target.value }))}>
+                    <option value="">Choose account</option>
+                    {accounts.filter(a => a.id !== form.accountId).map(a => <option key={a.id} value={a.id}>{a.name} ({a.owner}) — {formatRM(a.balance)}</option>)}
+                  </select>
+                </>
+              )}
+
+              {form.type !== 'transfer' && (
+                <>
+                  <label className="field-label">{form.type === 'income' ? 'Category / source' : 'Category'}</label>
+                  <select className="text-input" value={form.category}
+                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+                    {(form.type === 'income' ? INCOME_CATEGORIES : CATEGORIES).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </>
+              )}
 
               <label className="field-label">Amount (RM)</label>
               <input type="number" inputMode="decimal" min="0" step="0.01"
@@ -1290,33 +1639,46 @@ export default function App() {
                 </button>
                 <button type="submit" className="button button-primary">
                   {editId ? <Check size={16} aria-hidden="true"/> : <Plus size={16} aria-hidden="true"/>}
-                  {editId ? 'Save changes' : 'Save expense'}
+                  {editId ? 'Save changes' : form.type === 'income' ? 'Save income' : form.type === 'transfer' ? 'Save transfer' : 'Save expense'}
                 </button>
               </div>
             </form>
 
             <article className="card">
               <div className="section-head" style={{marginBottom:12}}>
-                <div><p className="eyebrow">All expenses</p><h2>Manage records</h2></div>
+                <div><p className="eyebrow">Transactions</p><h2>Manage records</h2></div>
+              </div>
+              <div className="transaction-filter">
+                {TRANSACTION_FILTERS.map((filter) => (
+                  <button key={filter} type="button"
+                    className={`filter-chip${transactionFilter === filter ? ' active' : ''}`}
+                    onClick={() => setTransactionFilter(filter)}>
+                    {filter}
+                  </button>
+                ))}
               </div>
               <div className="expense-list">
-                {expenses.length === 0 ? <p className="empty-state">No expenses yet.</p>
-                : [...expenses].sort((a,b) => new Date(b.date)-new Date(a.date)).map(ex => (
+                {historyTransactions.length === 0 ? <p className="empty-state">No transactions yet.</p>
+                : historyTransactions.map(ex => (
                   <div key={ex.id} className="expense-item">
                     <div className="expense-left">
-                      <CatBadge category={ex.category}/>
+                      <TransactionAccountBadge transaction={ex}/>
                       <div>
-                        <p className="expense-title">{ex.category}</p>
+                        <p className="expense-title">{getExpenseDisplayTitle(ex)}</p>
                         <p className="expense-meta">
-                          <span className="person-tag" data-person={ex.person}>{ex.person[0]}</span>
-                          {new Date(ex.date).toLocaleDateString()} · {getAccountLabel(ex.accountId)}
+                          <span className="person-tag" data-person={getPersonLabel(ex.person)}>{getPersonInitial(ex.person)}</span>
+                          {new Date(ex.date).toLocaleDateString()} · {getTransactionAccountLabel(ex)}
                         </p>
                       </div>
                     </div>
                     <div className="expense-right">
-                      <p className="expense-amount">-{formatRM(ex.amount)}</p>
-                      <button className="mini-button" onClick={() => handleEditExpense(ex)}>Edit</button>
-                      <button className="mini-button mini-delete" onClick={() => handleDeleteExpense(ex.id)}>Del</button>
+                      <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>
+                      {getTransactionType(ex) !== 'transfer' && (
+                        <>
+                          <button className="mini-button" onClick={() => handleEditExpense(ex)}>Edit</button>
+                          <button className="mini-button mini-delete" onClick={() => handleDeleteExpense(ex.id)}>Del</button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1346,9 +1708,18 @@ export default function App() {
                 <option value="All">All accounts</option>
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name} ({a.owner})</option>)}
               </select>
+              <label className="field-label">Type</label>
+              <select className="text-input" value={reportType} onChange={e => setReportType(e.target.value)}>
+                <option value="All">All</option>
+                <option value="Expenses">Expenses</option>
+                <option value="Income">Income</option>
+                <option value="Transfers">Transfers</option>
+              </select>
             </div>
             <div className="report-summary">
-              <div className="summary-card"><p className="stat-label">Total spent</p><p className="stat-value">{formatRM(reportTotal)}</p></div>
+              <div className="summary-card"><p className="stat-label">Total spent</p><p className="stat-value">{formatRM(reportExpenseTotal)}</p></div>
+              <div className="summary-card"><p className="stat-label">Total income</p><p className="stat-value income-value">{formatRM(reportIncomeTotal)}</p></div>
+              <div className="summary-card"><p className="stat-label">Net</p><p className={`stat-value${reportNetTotal >= 0 ? ' income-value' : ''}`}>{formatRM(reportNetTotal)}</p></div>
               <div className="summary-card"><p className="stat-label">Transactions</p><p className="stat-value">{reportExpenses.length}</p></div>
             </div>
             {reportByPerson.length > 0 && (
@@ -1358,7 +1729,7 @@ export default function App() {
                   {reportByPerson.map(([name, amt]) => (
                     <li key={name}>
                       <span style={{display:'flex',alignItems:'center',gap:8}}>
-                        <span className="person-tag sm" data-person={name}>{name[0]}</span>{name}
+                        <span className="person-tag sm" data-person={getPersonLabel(name)}>{getPersonInitial(name)}</span>{name}
                       </span>
                       <span>{formatRM(amt)}</span>
                     </li>

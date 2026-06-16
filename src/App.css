@@ -366,6 +366,37 @@ body {
 .expense-item:last-child { border-bottom: none; }
 .expense-left  { display: flex; align-items: center; gap: 10px; }
 .cat-badge     { width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.transaction-account-badge {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-sm);
+}
+.transaction-account-badge.has-logo {
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.94);
+}
+.transaction-account-badge.cash {
+  background: #E3F5EC;
+  color: #6BBF8A;
+}
+.transaction-account-badge.fallback {
+  background: #E3EEF8;
+  color: #6BA8D4;
+}
+.transaction-account-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 .expense-title  { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
 .expense-meta   { font-size: 10px; font-weight: 500; color: var(--text-hint); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .excluded-chip {
@@ -382,6 +413,8 @@ body {
 }
 .expense-right  { display: flex; align-items: center; gap: 8px; }
 .expense-amount { font-size: 13px; font-weight: 800; color: var(--danger); }
+.expense-amount.income { color: var(--green); }
+.expense-amount.transfer { color: var(--blue); }
 .empty-state    { font-size: 13px; color: var(--text-hint); padding: 24px 0; text-align: center; }
 
 /* ── Form ── */
@@ -527,6 +560,73 @@ textarea.text-input { resize: vertical; min-height: 72px; }
 
 /* ── Manage link ── */
 .manage-link { font-size: 13px; font-weight: 700; color: var(--orange); background: none; border: none; cursor: pointer; font-family: "Ubuntu", system-ui, sans-serif; }
+
+.recent-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.recent-date-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 31px;
+  padding: 6px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--orange);
+  box-shadow: var(--shadow-sm);
+}
+.recent-date-control input {
+  width: 96px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: "Ubuntu", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+}
+.recent-date-control input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.35;
+}
+.recent-clear-button {
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--orange-bg);
+  color: var(--orange);
+  padding: 7px 10px;
+  font-family: "Ubuntu", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+}
+.transaction-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: -2px 0 10px;
+}
+.filter-chip {
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--text-muted);
+  padding: 7px 11px;
+  font-family: "Ubuntu", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+}
+.filter-chip.active {
+  background: var(--orange-bg);
+  color: var(--orange);
+}
+.income-value { color: var(--green); }
 
 /* ── Eyebrow ── */
 .eyebrow { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--orange); }
