@@ -162,6 +162,22 @@ const daysLeftInMonth = () => {
 
 const getDateKey = (date) => date.toISOString().slice(0, 10)
 
+const formatLocalDateString = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const addDaysToDateString = (dateString, days) => {
+  const [year, month, day] = dateString.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  date.setDate(date.getDate() + days)
+  return formatLocalDateString(date)
+}
+
+const todayString = () => formatLocalDateString(new Date())
+
 const getLastDateKeys = (count, fromDate = new Date()) => {
   const keys = []
   for (let i = count - 1; i >= 0; i -= 1) {
@@ -197,6 +213,14 @@ const getExpenseDisplayTitle = (expense) => String(expense?.notes || '').trim() 
 const getTransactionType = (record) => record?.type === 'income' ? 'income' : record?.type === 'transfer' ? 'transfer' : 'expense'
 const isIncomeRecord = (record) => getTransactionType(record) === 'income'
 const isExpenseRecord = (record) => getTransactionType(record) === 'expense'
+const isBusinessExpenseRecord = (record) =>
+  isExpenseRecord(record) && (record?.isBusiness === true || record?.category === 'Business')
+const isPersonalExpenseRecord = (record) => isExpenseRecord(record) && !isBusinessExpenseRecord(record)
+// Sum real expenses (excludes income/transfers) booked on a given date key (YYYY-MM-DD)
+const sumExpensesForDate = (records, dateKey) =>
+  records
+    .filter(record => isPersonalExpenseRecord(record) && record.date === dateKey)
+    .reduce((sum, record) => sum + Number(record.amount || 0), 0)
 const getTransactionAmountLabel = (record) => {
   if (isIncomeRecord(record)) return `+${formatRM(record.amount)}`
   if (getTransactionType(record) === 'transfer') return formatRM(record.amount)
@@ -220,6 +244,17 @@ const formatTransactionTime = (record) => {
   return Number.isNaN(date.getTime())
     ? ''
     : date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+const formatDateTime = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+
+  const day = String(date.getDate()).padStart(2, '0')
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const year = date.getFullYear()
+  const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return `${day}/${month}/${year}, ${time}`
 }
 
 const CatBadge = ({ category }) => {
@@ -318,12 +353,31 @@ const BudgetRing = ({ pct }) => {
   )
 }
 
+// Today's Spending card — daily summary without budget-limit noise
+const DailySummaryCard = ({ title, spent, recordCount, biggestAmount, transactionLabel = 'transactions today' }) => {
+  const recordsLabel = recordCount === 1 ? 'record' : 'records'
+  return (
+    <article className="card spend-limit-card">
+      <div className="spend-limit-info">
+        <p className="eyebrow">{title}</p>
+        <p className="spend-limit-amount">{formatRM(spent)}</p>
+        <p className="spend-limit-sub">{recordCount} {transactionLabel}</p>
+        <p className="spend-limit-sub">Biggest: {formatRM(biggestAmount)}</p>
+      </div>
+      <div className="daily-record-badge" aria-label={`${recordCount} ${recordsLabel}`}>
+        <span>{recordCount}x</span>
+        <small>{recordsLabel}</small>
+      </div>
+    </article>
+  )
+}
+
 const NAV_ITEMS_LEFT  = [
   { key: 'dashboard', label: 'Home',    Icon: Home },
-  { key: 'reports',   label: 'Reports', Icon: PieChart },
+  { key: 'recent',    label: 'Recent',  Icon: Receipt },
 ]
 const NAV_ITEMS_RIGHT = [
-  { key: 'accounts',  label: 'Accounts',Icon: Wallet },
+  { key: 'reports',   label: 'Reports', Icon: PieChart },
   { key: 'settings',  label: 'Settings',Icon: Settings },
 ]
 
@@ -347,7 +401,7 @@ export default function App() {
     type: 'expense',
     date: new Date().toISOString().slice(0, 10),
     person: 'Adam', accountId: 'cash', toAccountId: '',
-    category: 'Food & Drink', amount: '', notes: '',
+    category: 'Food & Drink', amount: '', notes: '', isBusiness: false,
   })
   const [budgetInput, setBudgetInput]   = useState(String(DEFAULT_SETTINGS.monthlyBudget))
   const [pinInputs, setPinInputs]       = useState({ current: '', next: '', confirm: '' })
@@ -479,8 +533,20 @@ export default function App() {
   useEffect(() => { localStorage.setItem(STORAGE.commitments, JSON.stringify(commitments)) }, [commitments])
 
   const today          = new Date()
-  const todayKey       = today.toISOString().slice(0, 10)
+  const todayKey       = todayString()
   const currentMonthKey = getMonthKey(today)
+  const currentMonthOverviewLabel = `${today.toLocaleString('default', { month: 'long' })} Overview`
+  const latestUpdate = useMemo(() => {
+    return [...expenses, ...transfers]
+      .filter(item => item?.updatedAt || item?.createdAt)
+      .sort((a, b) => (
+        new Date(b.updatedAt || b.createdAt).getTime()
+        - new Date(a.updatedAt || a.createdAt).getTime()
+      ))[0]
+  }, [expenses, transfers])
+  const latestUpdateLabel = latestUpdate
+    ? `Updated on ${formatDateTime(latestUpdate.updatedAt || latestUpdate.createdAt)}`
+    : 'No recent updates'
 
   useEffect(() => {
     setPaidCommitments(safeParse(localStorage.getItem(`${STORAGE.commitmentPaidPrefix}${currentMonthKey}`), {}))
@@ -625,8 +691,12 @@ export default function App() {
     () => expenses.filter(e => getMonthKey(e.date) === currentMonthKey),
     [expenses, currentMonthKey]
   )
-  const currentMonthExpenses = useMemo(
-    () => currentMonthTransactions.filter(isExpenseRecord),
+  const personalExpenses = useMemo(
+    () => expenses.filter(isPersonalExpenseRecord),
+    [expenses]
+  )
+  const currentMonthPersonalExpenses = useMemo(
+    () => currentMonthTransactions.filter(isPersonalExpenseRecord),
     [currentMonthTransactions]
   )
   const currentMonthIncome = useMemo(
@@ -634,19 +704,70 @@ export default function App() {
     [currentMonthTransactions]
   )
   const todayTotal = useMemo(
-    () => currentMonthExpenses.filter(e => e.date === todayKey).reduce((s, e) => s + Number(e.amount), 0),
-    [currentMonthExpenses, todayKey]
+    () => sumExpensesForDate(personalExpenses, todayKey),
+    [personalExpenses, todayKey]
+  )
+  const todayExpenseRecords = useMemo(
+    () => personalExpenses.filter(e => e.date === todayKey),
+    [personalExpenses, todayKey]
+  )
+  const todayBiggestExpense = useMemo(
+    () => todayExpenseRecords.reduce((max, expense) => Math.max(max, Number(expense.amount) || 0), 0),
+    [todayExpenseRecords]
+  )
+  const todayTransferTotal = useMemo(
+    () => transfers
+      .filter(transfer => (transfer.date || transfer.createdAt || '').slice(0, 10) === todayKey)
+      .reduce((sum, transfer) => sum + (Number(transfer.amount) || 0), 0),
+    [transfers, todayKey]
+  )
+  const todayCategoryChips = useMemo(() => {
+    const totals = todayExpenseRecords.reduce((map, expense) => {
+      const category = expense.category || 'Other'
+      map.set(category, (map.get(category) || 0) + (Number(expense.amount) || 0))
+      return map
+    }, new Map())
+    if (todayTransferTotal > 0) totals.set('Transfer', todayTransferTotal)
+    return [...totals.entries()]
+      .filter(([, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([category, amount]) => ({ category, amount }))
+  }, [todayExpenseRecords, todayTransferTotal])
+  // The date the "Recent" tab is currently filtered to (falls back to today when no filter is active)
+  const selectedSpendDate = recentFilterDate || todayKey
+  const selectedDayExpenseRecords = useMemo(
+    () => personalExpenses.filter(e => e.date === selectedSpendDate),
+    [personalExpenses, selectedSpendDate]
+  )
+  const selectedDaySpendTotal = useMemo(
+    () => selectedDayExpenseRecords.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0),
+    [selectedDayExpenseRecords]
+  )
+  const selectedDayBiggestExpense = useMemo(
+    () => selectedDayExpenseRecords.reduce((max, expense) => Math.max(max, Number(expense.amount) || 0), 0),
+    [selectedDayExpenseRecords]
   )
   const monthTotal = useMemo(
-    () => currentMonthExpenses.reduce((s, e) => s + Number(e.amount), 0),
-    [currentMonthExpenses]
+    () => currentMonthPersonalExpenses.reduce((s, e) => s + Number(e.amount), 0),
+    [currentMonthPersonalExpenses]
   )
   const monthIncomeTotal = useMemo(
     () => currentMonthIncome.reduce((s, e) => s + Number(e.amount), 0),
     [currentMonthIncome]
   )
-  const monthNetTotal = monthIncomeTotal - monthTotal
   const totalBalance = useMemo(() => accounts.reduce((s, a) => s + Number(a.balance), 0), [accounts])
+  const cashBalance = useMemo(
+    () => accounts
+      .filter(account => account.type === 'Cash' || account.id === 'cash')
+      .reduce((sum, account) => sum + Number(account.balance || 0), 0),
+    [accounts]
+  )
+  const bankBalance = Math.max(totalBalance - cashBalance, 0)
+  const currentMonthTransferCount = useMemo(
+    () => transfers.filter(transfer => getMonthKey(transfer.date || transfer.createdAt || todayKey) === currentMonthKey).length,
+    [transfers, currentMonthKey, todayKey]
+  )
+  const currentMonthRecordCount = currentMonthTransactions.length + currentMonthTransferCount
   const activeCommitments = useMemo(
     () => commitments.filter(c => c.active !== false),
     [commitments]
@@ -681,26 +802,26 @@ export default function App() {
         ? 'Due soon'
         : 'Safe zone'
   const isCommitmentRisk = commitmentSummaryStatus === 'Overdue' || commitmentSummaryStatus === 'Due soon'
-  const dailyTotals = useMemo(() => sumByDate(expenses.filter(isExpenseRecord)), [expenses])
+  const dailyTotals = useMemo(() => sumByDate(personalExpenses), [personalExpenses])
   const todaySparkline = useMemo(() => {
-    const values = currentMonthExpenses
+    const values = currentMonthPersonalExpenses
       .filter(e => e.date === todayKey)
       .sort((a, b) => Number(a.id || 0) - Number(b.id || 0))
       .map(e => Number(e.amount || 0))
     return values.length ? values : [0, 0, 0, 0, 0, 0, 0]
-  }, [currentMonthExpenses, todayKey])
+  }, [currentMonthPersonalExpenses, todayKey])
   const monthBarValues = useMemo(() => {
-    const activeDays = Object.entries(sumByDate(currentMonthExpenses))
+    const activeDays = Object.entries(sumByDate(currentMonthPersonalExpenses))
       .filter(([, total]) => total > 0)
       .sort(([a], [b]) => new Date(a) - new Date(b))
       .slice(-10)
       .map(([, total]) => total)
     return activeDays.length ? activeDays : [0, 0, 0, 0, 0, 0, 0]
-  }, [currentMonthExpenses])
+  }, [currentMonthPersonalExpenses])
   const recentDayKeys = useMemo(() => getLastDateKeys(7, today), [todayKey])
   const transactionSparkline = useMemo(
-    () => recentDayKeys.map((key) => expenses.filter(e => isExpenseRecord(e) && e.date === key).length || dailyTotals[key] || 0),
-    [dailyTotals, expenses, recentDayKeys]
+    () => recentDayKeys.map((key) => personalExpenses.filter(e => e.date === key).length || dailyTotals[key] || 0),
+    [dailyTotals, personalExpenses, recentDayKeys]
   )
   const dashboardAccounts = useMemo(() => {
     const featured = accounts.filter(a => a.id === 'hlb_ft' || a.id === 'mbb_ml')
@@ -720,6 +841,23 @@ export default function App() {
   const recentFilterLabel = recentFilterDate
     ? new Date(`${recentFilterDate}T00:00:00`).toLocaleDateString()
     : ''
+
+  const changeSelectedExpenseDate = (days) => {
+    setRecentFilterDate(prev =>
+      addDaysToDateString(prev || todayString(), days)
+    )
+  }
+
+  const openAddExpenseFromRecent = () => {
+    setForm(f => ({
+      ...f,
+      type: 'expense',
+      date: recentFilterDate || todayKey,
+      category: CATEGORIES.includes(f.category) ? f.category : 'Food & Drink',
+      isBusiness: false,
+    }))
+    setPage('add')
+  }
   const reportOptions = useMemo(buildMonthOptions, [])
 
   const reportExpenses = useMemo(() => {
@@ -853,7 +991,7 @@ export default function App() {
 
   const resetForm = () => {
     setEditId(null)
-    setForm({ type: 'expense', date: new Date().toISOString().slice(0, 10), person: 'Adam', accountId: 'cash', toAccountId: '', category: 'Food & Drink', amount: '', notes: '' })
+    setForm({ type: 'expense', date: todayString(), person: 'Adam', accountId: 'cash', toAccountId: '', category: 'Food & Drink', amount: '', notes: '', isBusiness: false })
   }
 
   const normalizeExpenseDate = (value) => {
@@ -934,6 +1072,7 @@ export default function App() {
         category: type === 'transfer' ? 'Transfer' : category,
         amount,
         notes: String(form.notes || '').trim(),
+        isBusiness: type === 'expense' ? Boolean(form.isBusiness || category === 'Business') : false,
         createdAt: existingRecord?.createdAt || timestamp,
         ...(editId ? { updatedAt: timestamp } : {}),
       },
@@ -1017,6 +1156,7 @@ export default function App() {
       category: expense.category,
       amount: String(expense.amount),
       notes: expense.notes || '',
+      isBusiness: isBusinessExpenseRecord(expense),
     })
     setPage('add')
   }
@@ -1129,6 +1269,7 @@ export default function App() {
         category,
         amount,
         notes: String(expense.notes ?? title),
+        isBusiness: expense.isBusiness === true || category === 'Business',
       })
 
       return items
@@ -1336,9 +1477,8 @@ export default function App() {
           <img src="/hero-family.png" alt="Adam and Fatihah family portrait" className="family-img" />
           <div className="family-overlay" />
           <div className="family-content">
-            <p className="family-greeting">Assalamualaikum 👋</p>
-            <h1 className="family-title">Adam &<br/>Fatihah</h1>
-            <p className="family-sub">Family Expense Tracker</p>
+            <h1 className="family-title">Adam & Fatihah</h1>
+            <p className="family-sub">{currentMonthOverviewLabel}</p>
             <div className="family-spent-badge">
               <div className="badge-icon">
                 <BarChart3 size={22} aria-hidden="true"/>
@@ -1351,39 +1491,38 @@ export default function App() {
           </div>
         </div>
         <div className="header-actions">
-          <button type="button" className="button button-secondary logout-button" onClick={() => setAuthenticated(false)}>
-            <LogOut size={18} aria-hidden="true"/> Logout
-          </button>
-          <div className={`sync-pill ${syncStatus.toLowerCase()}`}>{syncStatus}</div>
+          <div className="header-chip-row">
+            <button type="button" className="button button-secondary logout-button" onClick={() => setAuthenticated(false)}>
+              <LogOut size={18} aria-hidden="true"/> Logout
+            </button>
+            <div className={`sync-pill ${syncStatus.toLowerCase()}`}>{syncStatus}</div>
+          </div>
+          <p className="header-updated-line">{latestUpdateLabel}</p>
         </div>
       </header>
 
       {/* ── QUICK ACTIONS ── */}
       <div className="quick-actions">
         <button className="qa-btn" onClick={() => {
-          setForm(f => ({ ...f, type: 'expense', category: CATEGORIES.includes(f.category) ? f.category : 'Food & Drink' }))
+          setForm(f => ({ ...f, type: 'expense', category: CATEGORIES.includes(f.category) ? f.category : 'Food & Drink', isBusiness: false }))
           setPage('add')
         }}>
           <div className="qa-icon qa-orange"><Plus size={19} aria-hidden="true"/></div>
-          <span className="qa-label">Expense</span>
+          <span className="qa-label">+ Expense</span>
         </button>
         <button className="qa-btn" onClick={() => {
-          setForm(f => ({ ...f, type: 'income', category: INCOME_CATEGORIES.includes(f.category) ? f.category : 'Salary' }))
+          setForm(f => ({ ...f, type: 'income', category: INCOME_CATEGORIES.includes(f.category) ? f.category : 'Salary', isBusiness: false }))
           setPage('add')
         }}>
           <div className="qa-icon qa-green"><Download size={19} aria-hidden="true"/></div>
-          <span className="qa-label">Income</span>
+          <span className="qa-label">+ Income</span>
         </button>
         <button className="qa-btn" onClick={() => {
-          setForm(f => ({ ...f, type: 'transfer', category: 'Transfer', toAccountId: f.toAccountId || accounts.find(a => a.id !== f.accountId)?.id || '' }))
+          setForm(f => ({ ...f, type: 'transfer', category: 'Transfer', toAccountId: f.toAccountId || accounts.find(a => a.id !== f.accountId)?.id || '', isBusiness: false }))
           setPage('add')
         }}>
           <div className="qa-icon qa-blue"><Repeat2 size={19} aria-hidden="true"/></div>
-          <span className="qa-label">Transfer</span>
-        </button>
-        <button className="qa-btn" onClick={handleExportBackup}>
-          <div className="qa-icon qa-green"><Download size={19} aria-hidden="true"/></div>
-          <span className="qa-label">Export</span>
+          <span className="qa-label">⇄ Transfer</span>
         </button>
       </div>
 
@@ -1398,6 +1537,30 @@ export default function App() {
                 <h2>Monthly summary</h2>
               </div>
               <div className="pill">Budget {formatRM(effectiveMonthlyBudget)}</div>
+            </div>
+
+            {/* Today's spending summary */}
+            <DailySummaryCard
+              title="Today's Spending"
+              spent={todayTotal}
+              recordCount={todayExpenseRecords.length}
+              biggestAmount={todayBiggestExpense}
+            />
+
+            <div className="category-chip-row" aria-label="Today's category spending">
+              {todayCategoryChips.length ? (
+                todayCategoryChips.map(item => (
+                  <div key={item.category} className="category-insight-chip">
+                    <span>{item.category}</span>
+                    <strong>{formatRM(item.amount)}</strong>
+                  </div>
+                ))
+              ) : (
+                <div className="category-insight-chip muted">
+                  <span>No spending today</span>
+                  <strong>{formatRM(0)}</strong>
+                </div>
+              )}
             </div>
 
             {/* Stats 2x2 with sparklines */}
@@ -1423,10 +1586,10 @@ export default function App() {
               <article className="stat-card">
                 <div className="stat-card-top">
                   <div className="stat-icon-badge"><Wallet size={20} aria-hidden="true"/></div>
-                  <span className="stat-label">NET BALANCE</span>
+                  <span className="stat-label">REMAINING BUDGET</span>
                 </div>
-                <p className={`stat-value${monthNetTotal >= 0 ? ' income-value' : ''}`}>{formatRM(monthNetTotal)}</p>
-                <p className="stat-note">Income minus expenses</p>
+                <p className="stat-value">{formatRM(remainingBudget)}</p>
+                <p className="stat-note">Budget minus spending</p>
                 <SparkLine
                   color="#9B7EC8"
                   type="progress"
@@ -1438,8 +1601,8 @@ export default function App() {
                   <div className="stat-icon-badge"><FileText size={20} aria-hidden="true"/></div>
                   <span className="stat-label">TRANSACTIONS</span>
                 </div>
-                <p className="stat-value">{currentMonthTransactions.length}</p>
-                <p className="stat-note">Income and expenses</p>
+                <p className="stat-value">{currentMonthRecordCount}</p>
+                <p className="stat-note">All records this month</p>
                 <SparkLine color="#6BA8D4" type="wave2" values={transactionSparkline}/>
               </article>
             </div>
@@ -1489,14 +1652,21 @@ export default function App() {
             <div className="section-head">
               <div>
                 <p className="eyebrow">Accounts</p>
-                <h2>Balances</h2>
+                <div className="balances-title-row">
+                  <h2>Balances</h2>
+                  <span className="pill balance-total-pill">{formatRM(totalBalance)}</span>
+                </div>
+                <div className="balance-split-row">
+                  <span>Cash {formatRM(cashBalance)}</span>
+                  <span>Bank {formatRM(bankBalance)}</span>
+                </div>
               </div>
-              <button className="manage-link" onClick={() => setPage('accounts')}>Manage</button>
+              <button className="manage-link" onClick={() => setPage('settings')}>Manage</button>
             </div>
 
             <div className="account-list">
               {dashboardAccounts.map(acc => (
-                <div key={acc.id} className="account-row" onClick={() => setPage('accounts')} style={{cursor:'pointer'}}>
+                <div key={acc.id} className="account-row" onClick={() => setPage('settings')} style={{cursor:'pointer'}}>
                   <div className="account-left">
                     <AccountBadge name={acc.name} type={acc.type}/>
                     <div>
@@ -1514,8 +1684,20 @@ export default function App() {
                 </div>
               ))}
             </div>
+          </section>
+        )}
 
-            {/* Recent expenses */}
+        {/* ── RECENT EXPENSES ── */}
+        {page === 'recent' && (
+          <section className="section-card">
+            <DailySummaryCard
+              title={recentFilterDate && recentFilterDate !== todayKey ? `Spending on ${recentFilterLabel}` : "Today's Spending"}
+              spent={selectedDaySpendTotal}
+              recordCount={selectedDayExpenseRecords.length}
+              biggestAmount={selectedDayBiggestExpense}
+              transactionLabel={recentFilterDate && recentFilterDate !== todayKey ? 'transactions' : 'transactions today'}
+            />
+
             <article className="card">
               <div className="section-head" style={{marginBottom:12}}>
                 <div>
@@ -1523,17 +1705,23 @@ export default function App() {
                   <h2>Last expenses</h2>
                 </div>
                 <div className="recent-actions">
-                  <label className="recent-date-control" htmlFor="recent-date-filter" aria-label="Filter recent expenses by date">
+                  <button type="button" className="recent-date-step" onClick={() => changeSelectedExpenseDate(-1)} aria-label="Previous day">
+                    {'<'}
+                  </button>
+                  <div className="recent-date-control" aria-label="Filter recent expenses by date">
                     <Calendar size={14} aria-hidden="true"/>
                     <input id="recent-date-filter" type="date" value={recentFilterDate}
                       onChange={e => setRecentFilterDate(e.target.value)}/>
-                  </label>
+                  </div>
+                  <button type="button" className="recent-date-step" onClick={() => changeSelectedExpenseDate(1)} aria-label="Next day">
+                    {'>'}
+                  </button>
                   {recentFilterDate && (
                     <button type="button" className="recent-clear-button" onClick={() => setRecentFilterDate('')}>
                       Clear
                     </button>
                   )}
-                  <button type="button" className="button button-primary" style={{fontSize:11,padding:'7px 14px'}} onClick={() => setPage('add')}>
+                  <button type="button" className="button button-primary" style={{fontSize:11,padding:'7px 14px'}} onClick={openAddExpenseFromRecent}>
                     <Plus size={15} aria-hidden="true"/> Add
                   </button>
                 </div>
@@ -1545,21 +1733,29 @@ export default function App() {
                     {recentFilterDate ? `No expenses on ${recentFilterLabel}` : 'No expenses yet. Tap Add to start!'}
                   </p>
                 ) : visibleRecentExpenses.map(ex => (
-                  <div key={ex.id} className="expense-item">
+                  <div key={ex.id} className="expense-item recent-expense-item">
                     <div className="expense-left">
                       <TransactionAccountBadge transaction={ex}/>
                       <div>
                         <p className="expense-title">{getExpenseDisplayTitle(ex)}</p>
-                        <p className="expense-meta">
+                        <p className="expense-meta recent-expense-meta">
                           <span className="person-tag" data-person={getPersonLabel(ex.person)}>{getPersonInitial(ex.person)}</span>
-                          {getTransactionMeta(ex)}
+                          <span className="transaction-time-meta">{getTransactionMeta(ex)}</span>
+                          {isBusinessExpenseRecord(ex) && <span className="business-chip">Business</span>}
                           {ex.updatedAt && <span className="updated-chip">Updated just now</span>}
                         </p>
                       </div>
                     </div>
-                    <div className="expense-right">
-                      <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>
-                      <button className="mini-button" onClick={() => handleEditExpense(ex)}>Edit</button>
+                    <div className="expense-right recent-expense-right">
+                      <div className="expense-amount-column">
+                        <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>
+                      </div>
+                      <div className="recent-expense-actions">
+                        <button className="mini-button" onClick={() => handleEditExpense(ex)}>Edit</button>
+                        <button className="mini-button mini-delete" onClick={() => handleDeleteExpense(ex.id)}>
+                          <Trash size={12} aria-hidden="true" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1594,6 +1790,7 @@ export default function App() {
                           ? 'Transfer'
                           : (CATEGORIES.includes(f.category) ? f.category : 'Food & Drink'),
                       toAccountId: type === 'transfer' ? (f.toAccountId || accounts.find(a => a.id !== f.accountId)?.id || '') : f.toAccountId,
+                      isBusiness: type === 'expense' ? Boolean(f.isBusiness) : false,
                     }))}>
                     {label}
                   </button>
@@ -1640,6 +1837,17 @@ export default function App() {
                     {(form.type === 'income' ? INCOME_CATEGORIES : CATEGORIES).map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </>
+              )}
+
+              {form.type === 'expense' && (
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(form.isBusiness)}
+                    onChange={e => setForm(f => ({ ...f, isBusiness: e.target.checked }))}
+                  />
+                  <span>Mark as Business Expense</span>
+                </label>
               )}
 
               <label className="field-label">Amount (RM)</label>
@@ -1693,16 +1901,21 @@ export default function App() {
                         <p className="expense-meta">
                           <span className="person-tag" data-person={getPersonLabel(ex.person)}>{getPersonInitial(ex.person)}</span>
                           {getTransactionMeta(ex)}
+                          {isBusinessExpenseRecord(ex) && <span className="business-chip">Business</span>}
                           {ex.updatedAt && <span className="updated-chip">Updated just now</span>}
                         </p>
                       </div>
                     </div>
                     <div className="expense-right">
-                      <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>
+                      <div className="expense-amount-column">
+                        <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>
+                      </div>
                       {getTransactionType(ex) !== 'transfer' && (
                         <>
                           <button className="mini-button" onClick={() => handleEditExpense(ex)}>Edit</button>
-                          <button className="mini-button mini-delete" onClick={() => handleDeleteExpense(ex.id)}>Del</button>
+                          <button className="mini-button mini-delete" onClick={() => handleDeleteExpense(ex.id)}>
+                            <Trash size={12} aria-hidden="true" />
+                          </button>
                         </>
                       )}
                     </div>
@@ -1790,10 +2003,14 @@ export default function App() {
           </section>
         )}
 
-        {/* ── ACCOUNTS ── */}
-        {page === 'accounts' && (
+        {/* ── SETTINGS ── */}
+        {page === 'settings' && (
           <section className="section-card">
             <div className="section-head">
+              <div><p className="eyebrow">Settings</p><h2>Personalize</h2></div>
+            </div>
+
+            <div className="section-head" style={{ marginTop: 24 }}>
               <div><p className="eyebrow">Accounts</p><h2>Manage balances</h2></div>
             </div>
             <div className="account-total-strip">
@@ -1828,14 +2045,9 @@ export default function App() {
                 </div>
               </div>
             ))}
-          </section>
-        )}
 
-        {/* ── SETTINGS ── */}
-        {page === 'settings' && (
-          <section className="section-card">
-            <div className="section-head">
-              <div><p className="eyebrow">Settings</p><h2>Personalize</h2></div>
+            <div className="section-head" style={{ marginTop: 32 }}>
+              <div><p className="eyebrow">Preferences</p><h2>App settings</h2></div>
             </div>
             <article className="card settings-card">
               <div className="setting-row">

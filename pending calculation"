@@ -1,0 +1,668 @@
+[1mdiff --git a/src/App.css b/src/App.css[m
+[1mindex 145a2e7..a98ac57 100644[m
+[1m--- a/src/App.css[m
+[1m+++ b/src/App.css[m
+[36m@@ -115,8 +115,7 @@[m [mbody {[m
+ .family-header {[m
+   position: relative;[m
+   width: 100%;[m
+[31m-  /* Taller so faces show fully */[m
+[31m-  height: 300px;[m
+[32m+[m[32m  height: 245px;[m
+   overflow: hidden;[m
+ }[m
+ [m
+[36m@@ -343,6 +342,73 @@[m [mbody {[m
+ .ring-fill { fill: none; stroke-width: 7; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }[m
+ .ring-pct  { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; line-height: 1; }[m
+ [m
+[32m+[m[32m/* ── Today's Spending Summary Card ── */[m
+[32m+[m[32m.spend-limit-card {[m
+[32m+[m[32m  display: flex;[m
+[32m+[m[32m  align-items: center;[m
+[32m+[m[32m  justify-content: space-between;[m
+[32m+[m[32m  gap: 14px;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m.spend-limit-info { flex: 1; min-width: 0; }[m
+[32m+[m[32m.spend-limit-amount { font-size: 26px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.5px; margin: 4px 0 2px; }[m
+[32m+[m[32m.spend-limit-sub { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-top: 2px; }[m
+[32m+[m[32m.daily-record-badge {[m
+[32m+[m[32m  flex: 0 0 auto;[m
+[32m+[m[32m  min-width: 66px;[m
+[32m+[m[32m  min-height: 58px;[m
+[32m+[m[32m  border-radius: 18px;[m
+[32m+[m[32m  background: var(--orange-bg);[m
+[32m+[m[32m  color: var(--orange);[m
+[32m+[m[32m  display: flex;[m
+[32m+[m[32m  flex-direction: column;[m
+[32m+[m[32m  align-items: center;[m
+[32m+[m[32m  justify-content: center;[m
+[32m+[m[32m  box-shadow: var(--shadow-sm);[m
+[32m+[m[32m}[m
+[32m+[m[32m.daily-record-badge span { font-size: 20px; line-height: 1; font-weight: 900; }[m
+[32m+[m[32m.daily-record-badge small { margin-top: 4px; font-size: 10px; font-weight: 800; text-transform: lowercase; }[m
+[32m+[m
+[32m+[m[32m.category-chip-row {[m
+[32m+[m[32m  display: flex;[m
+[32m+[m[32m  gap: 8px;[m
+[32m+[m[32m  overflow-x: auto;[m
+[32m+[m[32m  padding: 1px 2px 6px;[m
+[32m+[m[32m  margin-top: -4px;[m
+[32m+[m[32m  scrollbar-width: none;[m
+[32m+[m[32m}[m
+[32m+[m[32m.category-chip-row::-webkit-scrollbar { display: none; }[m
+[32m+[m[32m.category-insight-chip {[m
+[32m+[m[32m  flex: 0 0 auto;[m
+[32m+[m[32m  min-height: 36px;[m
+[32m+[m[32m  display: inline-flex;[m
+[32m+[m[32m  align-items: center;[m
+[32m+[m[32m  gap: 8px;[m
+[32m+[m[32m  padding: 8px 12px;[m
+[32m+[m[32m  border-radius: var(--radius-pill);[m
+[32m+[m[32m  background: rgba(255, 255, 255, 0.82);[m
+[32m+[m[32m  color: var(--text-secondary);[m
+[32m+[m[32m  box-shadow: var(--shadow-sm);[m
+[32m+[m[32m  border: 1px solid rgba(255, 140, 66, 0.12);[m
+[32m+[m[32m  backdrop-filter: blur(12px);[m
+[32m+[m[32m}[m
+[32m+[m[32m.category-insight-chip span {[m
+[32m+[m[32m  font-size: 11px;[m
+[32m+[m[32m  font-weight: 800;[m
+[32m+[m[32m  color: var(--text-primary);[m
+[32m+[m[32m  white-space: nowrap;[m
+[32m+[m[32m}[m
+[32m+[m[32m.category-insight-chip strong {[m
+[32m+[m[32m  font-size: 11px;[m
+[32m+[m[32m  font-weight: 900;[m
+[32m+[m[32m  color: var(--orange);[m
+[32m+[m[32m  white-space: nowrap;[m
+[32m+[m[32m}[m
+[32m+[m[32m.category-insight-chip.muted span,[m
+[32m+[m[32m.category-insight-chip.muted strong {[m
+[32m+[m[32m  color: var(--text-hint);[m
+[32m+[m[32m}[m
+[32m+[m
+ .progress-bar { height: 7px; background: rgba(255,255,255,0.14); border-radius: var(--radius-pill); overflow: hidden; margin-bottom: 12px; }[m
+ .progress-fill { height: 100%; background: linear-gradient(90deg, #FFB347, #FFD47A); border-radius: var(--radius-pill); transition: width 0.8s cubic-bezier(0.34,1.56,0.64,1); box-shadow: 0 0 8px rgba(255,180,70,0.5); }[m
+ [m
+[36m@@ -362,9 +428,10 @@[m [mbody {[m
+ [m
+ /* ── Expense List ── */[m
+ .expense-list { display: flex; flex-direction: column; }[m
+[31m-.expense-item { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid rgba(160,140,100,0.08); }[m
+[32m+[m[32m.expense-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(160,140,100,0.08); }[m
+ .expense-item:last-child { border-bottom: none; }[m
+[31m-.expense-left  { display: flex; align-items: center; gap: 10px; }[m
+[32m+[m[32m.expense-left  { min-width: 0; flex: 1 1 auto; display: flex; align-items: center; gap: 10px; }[m
+[32m+[m[32m.expense-left > div:not(.transaction-account-badge) { min-width: 0; }[m
+ .cat-badge     { width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }[m
+ .transaction-account-badge {[m
+   width: 36px;[m
+[36m@@ -397,7 +464,7 @@[m [mbody {[m
+   height: 100%;[m
+   object-fit: contain;[m
+ }[m
+[31m-.expense-title  { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }[m
+[32m+[m[32m.expense-title  { overflow: hidden; font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px; text-overflow: ellipsis; white-space: nowrap; }[m
+ .expense-meta   { font-size: 10px; font-weight: 500; color: var(--text-hint); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }[m
+ .excluded-chip {[m
+   display: inline-flex;[m
+[36m@@ -423,8 +490,9 @@[m [mbody {[m
+   font-weight: 800;[m
+   line-height: 1;[m
+ }[m
+[31m-.expense-right  { display: flex; align-items: center; gap: 8px; }[m
+[31m-.expense-amount { font-size: 13px; font-weight: 800; color: var(--danger); }[m
+[32m+[m[32m.expense-right  { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }[m
+[32m+[m[32m.expense-amount-column { min-width: 90px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; text-align: right; white-space: nowrap; }[m
+[32m+[m[32m.expense-amount { font-size: 13px; font-weight: 800; color: var(--danger); white-space: nowrap; }[m
+ .expense-amount.income { color: var(--green); }[m
+ .expense-amount.transfer { color: var(--blue); }[m
+ .empty-state    { font-size: 13px; color: var(--text-hint); padding: 24px 0; text-align: center; }[m
+[36m@@ -573,27 +641,55 @@[m [mtextarea.text-input { resize: vertical; min-height: 72px; }[m
+ /* ── Manage link ── */[m
+ .manage-link { font-size: 13px; font-weight: 700; color: var(--orange); background: none; border: none; cursor: pointer; font-family: "Ubuntu", system-ui, sans-serif; }[m
+ [m
+[32m+[m[32m/* ── Balances title + total chip ── */[m
+[32m+[m[32m.balances-title-row { display: flex; align-items: center; gap: 8px; }[m
+[32m+[m[32m.balance-total-pill { padding: 3px 11px; min-height: unset; font-size: 11px; font-weight: 700; }[m
+[32m+[m[32m.balance-split-row {[m
+[32m+[m[32m  display: flex;[m
+[32m+[m[32m  gap: 8px;[m
+[32m+[m[32m  flex-wrap: wrap;[m
+[32m+[m[32m  margin-top: 5px;[m
+[32m+[m[32m}[m
+[32m+[m[32m.balance-split-row span {[m
+[32m+[m[32m  min-height: 22px;[m
+[32m+[m[32m  display: inline-flex;[m
+[32m+[m[32m  align-items: center;[m
+[32m+[m[32m  padding: 4px 9px;[m
+[32m+[m[32m  border-radius: var(--radius-pill);[m
+[32m+[m[32m  background: rgba(255, 255, 255, 0.72);[m
+[32m+[m[32m  color: var(--text-muted);[m
+[32m+[m[32m  font-size: 10px;[m
+[32m+[m[32m  font-weight: 800;[m
+[32m+[m[32m  box-shadow: var(--shadow-sm);[m
+[32m+[m[32m}[m
+[32m+[m
+ .recent-actions {[m
+   display: flex;[m
+   align-items: center;[m
+   justify-content: flex-end;[m
+   gap: 7px;[m
+   flex-wrap: wrap;[m
+[32m+[m[32m  isolation: isolate;[m
+ }[m
+ .recent-date-control {[m
+   position: relative;[m
+[32m+[m[32m  z-index: 0;[m
+   display: inline-flex;[m
+   align-items: center;[m
+   gap: 5px;[m
+[32m+[m[32m  flex: 0 0 auto;[m
+   min-height: 31px;[m
+   padding: 6px 9px;[m
+   border-radius: var(--radius-pill);[m
+   background: var(--bg);[m
+   color: var(--orange);[m
+   box-shadow: var(--shadow-sm);[m
+[32m+[m[32m  overflow: hidden;[m
+ }[m
+ .recent-date-control input {[m
+   width: 96px;[m
+[32m+[m[32m  max-width: 96px;[m
+[32m+[m[32m  box-sizing: border-box;[m
+   border: none;[m
+   outline: none;[m
+   background: transparent;[m
+[36m@@ -606,6 +702,24 @@[m [mtextarea.text-input { resize: vertical; min-height: 72px; }[m
+   cursor: pointer;[m
+   opacity: 0.35;[m
+ }[m
+[32m+[m[32m.recent-date-step {[m
+[32m+[m[32m  position: relative;[m
+[32m+[m[32m  z-index: 1;[m
+[32m+[m[32m  flex: 0 0 31px;[m
+[32m+[m[32m  width: 31px;[m
+[32m+[m[32m  height: 31px;[m
+[32m+[m[32m  min-height: 31px;[m
+[32m+[m[32m  border: none;[m
+[32m+[m[32m  border-radius: var(--radius-pill);[m
+[32m+[m[32m  background: var(--bg);[m
+[32m+[m[32m  color: var(--orange);[m
+[32m+[m[32m  font-family: "Ubuntu", system-ui, sans-serif;[m
+[32m+[m[32m  font-size: 13px;[m
+[32m+[m[32m  font-weight: 900;[m
+[32m+[m[32m  box-shadow: var(--shadow-sm);[m
+[32m+[m[32m  cursor: pointer;[m
+[32m+[m[32m  pointer-events: auto;[m
+[32m+[m[32m}[m
+ .recent-clear-button {[m
+   border: none;[m
+   border-radius: var(--radius-pill);[m
+[36m@@ -700,7 +814,7 @@[m [mbody {[m
+ [m
+ .family-header {[m
+   width: calc(100% + 16px);[m
+[31m-  height: 300px;[m
+[32m+[m[32m  height: 245px;[m
+   margin-inline: -8px;[m
+   border-radius: 0 0 36px 36px;[m
+   box-shadow: none;[m
+[36m@@ -722,7 +836,7 @@[m [mbody {[m
+ }[m
+ [m
+ .family-content {[m
+[31m-  top: 22px;[m
+[32m+[m[32m  top: 24px;[m
+   bottom: 18px;[m
+   left: 10px;[m
+   right: 22px;[m
+[36m@@ -738,8 +852,9 @@[m [mbody {[m
+ [m
+ .family-title {[m
+   margin: 0 0 4px;[m
+[31m-  font-size: 26px;[m
+[31m-  line-height: 1.04;[m
+[32m+[m[32m  max-width: 210px;[m
+[32m+[m[32m  font-size: 25px;[m
+[32m+[m[32m  line-height: 1.08;[m
+   letter-spacing: -0.02em;[m
+   text-shadow: 0 4px 18px rgba(0, 0, 0, 0.34);[m
+ }[m
+[36m@@ -748,7 +863,7 @@[m [mbody {[m
+   margin-bottom: 0;[m
+   color: rgba(255, 255, 255, 0.86);[m
+   font-size: 13px;[m
+[31m-  font-weight: 400;[m
+[32m+[m[32m  font-weight: 700;[m
+ }[m
+ [m
+ .family-spent-badge {[m
+[36m@@ -852,7 +967,7 @@[m [mbody {[m
+   margin: -20px 12px 0;[m
+   padding: 4px 8px;[m
+   display: grid;[m
+[31m-  grid-template-columns: repeat(4, minmax(0, 1fr));[m
+[32m+[m[32m  grid-template-columns: repeat(3, minmax(0, 1fr));[m
+   gap: 8px;[m
+   border-radius: 20px;[m
+   background: #fff;[m
+[1mdiff --git a/src/App.jsx b/src/App.jsx[m
+[1mindex 41fe31a..fca00cc 100644[m
+[1m--- a/src/App.jsx[m
+[1m+++ b/src/App.jsx[m
+[36m@@ -162,6 +162,22 @@[m [mconst daysLeftInMonth = () => {[m
+ [m
+ const getDateKey = (date) => date.toISOString().slice(0, 10)[m
+ [m
+[32m+[m[32mconst formatLocalDateString = (date) => {[m
+[32m+[m[32m  const year = date.getFullYear()[m
+[32m+[m[32m  const month = String(date.getMonth() + 1).padStart(2, '0')[m
+[32m+[m[32m  const day = String(date.getDate()).padStart(2, '0')[m
+[32m+[m[32m  return `${year}-${month}-${day}`[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mconst addDaysToDateString = (dateString, days) => {[m
+[32m+[m[32m  const [year, month, day] = dateString.split('-').map(Number)[m
+[32m+[m[32m  const date = new Date(year, month - 1, day)[m
+[32m+[m[32m  date.setDate(date.getDate() + days)[m
+[32m+[m[32m  return formatLocalDateString(date)[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mconst todayString = () => formatLocalDateString(new Date())[m
+[32m+[m
+ const getLastDateKeys = (count, fromDate = new Date()) => {[m
+   const keys = [][m
+   for (let i = count - 1; i >= 0; i -= 1) {[m
+[36m@@ -197,6 +213,11 @@[m [mconst getExpenseDisplayTitle = (expense) => String(expense?.notes || '').trim()[m
+ const getTransactionType = (record) => record?.type === 'income' ? 'income' : record?.type === 'transfer' ? 'transfer' : 'expense'[m
+ const isIncomeRecord = (record) => getTransactionType(record) === 'income'[m
+ const isExpenseRecord = (record) => getTransactionType(record) === 'expense'[m
+[32m+[m[32m// Sum real expenses (excludes income/transfers) booked on a given date key (YYYY-MM-DD)[m
+[32m+[m[32mconst sumExpensesForDate = (records, dateKey) =>[m
+[32m+[m[32m  records[m
+[32m+[m[32m    .filter(record => isExpenseRecord(record) && record.date === dateKey)[m
+[32m+[m[32m    .reduce((sum, record) => sum + Number(record.amount || 0), 0)[m
+ const getTransactionAmountLabel = (record) => {[m
+   if (isIncomeRecord(record)) return `+${formatRM(record.amount)}`[m
+   if (getTransactionType(record) === 'transfer') return formatRM(record.amount)[m
+[36m@@ -318,12 +339,31 @@[m [mconst BudgetRing = ({ pct }) => {[m
+   )[m
+ }[m
+ [m
+[32m+[m[32m// Today's Spending card — daily summary without budget-limit noise[m
+[32m+[m[32mconst DailySummaryCard = ({ title, spent, recordCount, biggestAmount, transactionLabel = 'transactions today' }) => {[m
+[32m+[m[32m  const recordsLabel = recordCount === 1 ? 'record' : 'records'[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <article className="card spend-limit-card">[m
+[32m+[m[32m      <div className="spend-limit-info">[m
+[32m+[m[32m        <p className="eyebrow">{title}</p>[m
+[32m+[m[32m        <p className="spend-limit-amount">{formatRM(spent)}</p>[m
+[32m+[m[32m        <p className="spend-limit-sub">{recordCount} {transactionLabel}</p>[m
+[32m+[m[32m        <p className="spend-limit-sub">Biggest: {formatRM(biggestAmount)}</p>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m      <div className="daily-record-badge" aria-label={`${recordCount} ${recordsLabel}`}>[m
+[32m+[m[32m        <span>{recordCount}x</span>[m
+[32m+[m[32m        <small>{recordsLabel}</small>[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    </article>[m
+[32m+[m[32m  )[m
+[32m+[m[32m}[m
+[32m+[m
+ const NAV_ITEMS_LEFT  = [[m
+   { key: 'dashboard', label: 'Home',    Icon: Home },[m
+[31m-  { key: 'reports',   label: 'Reports', Icon: PieChart },[m
+[32m+[m[32m  { key: 'recent',    label: 'Recent',  Icon: Receipt },[m
+ ][m
+ const NAV_ITEMS_RIGHT = [[m
+[31m-  { key: 'accounts',  label: 'Accounts',Icon: Wallet },[m
+[32m+[m[32m  { key: 'reports',   label: 'Reports', Icon: PieChart },[m
+   { key: 'settings',  label: 'Settings',Icon: Settings },[m
+ ][m
+ [m
+[36m@@ -479,8 +519,9 @@[m [mexport default function App() {[m
+   useEffect(() => { localStorage.setItem(STORAGE.commitments, JSON.stringify(commitments)) }, [commitments])[m
+ [m
+   const today          = new Date()[m
+[31m-  const todayKey       = today.toISOString().slice(0, 10)[m
+[32m+[m[32m  const todayKey       = todayString()[m
+   const currentMonthKey = getMonthKey(today)[m
+[32m+[m[32m  const currentMonthOverviewLabel = `${today.toLocaleString('default', { month: 'long' })} Overview`[m
+ [m
+   useEffect(() => {[m
+     setPaidCommitments(safeParse(localStorage.getItem(`${STORAGE.commitmentPaidPrefix}${currentMonthKey}`), {}))[m
+[36m@@ -634,8 +675,48 @@[m [mexport default function App() {[m
+     [currentMonthTransactions][m
+   )[m
+   const todayTotal = useMemo([m
+[31m-    () => currentMonthExpenses.filter(e => e.date === todayKey).reduce((s, e) => s + Number(e.amount), 0),[m
+[31m-    [currentMonthExpenses, todayKey][m
+[32m+[m[32m    () => sumExpensesForDate(expenses, todayKey),[m
+[32m+[m[32m    [expenses, todayKey][m
+[32m+[m[32m  )[m
+[32m+[m[32m  const todayExpenseRecords = useMemo([m
+[32m+[m[32m    () => expenses.filter(e => isExpenseRecord(e) && e.date === todayKey),[m
+[32m+[m[32m    [expenses, todayKey][m
+[32m+[m[32m  )[m
+[32m+[m[32m  const todayBiggestExpense = useMemo([m
+[32m+[m[32m    () => todayExpenseRecords.reduce((max, expense) => Math.max(max, Number(expense.amount) || 0), 0),[m
+[32m+[m[32m    [todayExpenseRecords][m
+[32m+[m[32m  )[m
+[32m+[m[32m  const todayTransferTotal = useMemo([m
+[32m+[m[32m    () => transfers[m
+[32m+[m[32m      .filter(transfer => (transfer.date || transfer.createdAt || '').slice(0, 10) === todayKey)[m
+[32m+[m[32m      .reduce((sum, transfer) => sum + (Number(transfer.amount) || 0), 0),[m
+[32m+[m[32m    [transfers, todayKey][m
+[32m+[m[32m  )[m
+[32m+[m[32m  const todayCategoryChips = useMemo(() => {[m
+[32m+[m[32m    const totals = todayExpenseRecords.reduce((map, expense) => {[m
+[32m+[m[32m      const category = expense.category || 'Other'[m
+[32m+[m[32m      map.set(category, (map.get(category) || 0) + (Number(expense.amount) || 0))[m
+[32m+[m[32m      return map[m
+[32m+[m[32m    }, new Map())[m
+[32m+[m[32m    if (todayTransferTotal > 0) totals.set('Transfer', todayTransferTotal)[m
+[32m+[m[32m    return [...totals.entries()][m
+[32m+[m[32m      .filter(([, amount]) => amount > 0)[m
+[32m+[m[32m      .sort((a, b) => b[1] - a[1])[m
+[32m+[m[32m      .map(([category, amount]) => ({ category, amount }))[m
+[32m+[m[32m  }, [todayExpenseRecords, todayTransferTotal])[m
+[32m+[m[32m  // The date the "Recent" tab is currently filtered to (falls back to today when no filter is active)[m
+[32m+[m[32m  const selectedSpendDate = recentFilterDate || todayKey[m
+[32m+[m[32m  const selectedDayExpenseRecords = useMemo([m
+[32m+[m[32m    () => expenses.filter(e => isExpenseRecord(e) && e.date === selectedSpendDate),[m
+[32m+[m[32m    [expenses, selectedSpendDate][m
+[32m+[m[32m  )[m
+[32m+[m[32m  const selectedDaySpendTotal = useMemo([m
+[32m+[m[32m    () => selectedDayExpenseRecords.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0),[m
+[32m+[m[32m    [selectedDayExpenseRecords][m
+[32m+[m[32m  )[m
+[32m+[m[32m  const selectedDayBiggestExpense = useMemo([m
+[32m+[m[32m    () => selectedDayExpenseRecords.reduce((max, expense) => Math.max(max, Number(expense.amount) || 0), 0),[m
+[32m+[m[32m    [selectedDayExpenseRecords][m
+   )[m
+   const monthTotal = useMemo([m
+     () => currentMonthExpenses.reduce((s, e) => s + Number(e.amount), 0),[m
+[36m@@ -645,8 +726,19 @@[m [mexport default function App() {[m
+     () => currentMonthIncome.reduce((s, e) => s + Number(e.amount), 0),[m
+     [currentMonthIncome][m
+   )[m
+[31m-  const monthNetTotal = monthIncomeTotal - monthTotal[m
+   const totalBalance = useMemo(() => accounts.reduce((s, a) => s + Number(a.balance), 0), [accounts])[m
+[32m+[m[32m  const cashBalance = useMemo([m
+[32m+[m[32m    () => accounts[m
+[32m+[m[32m      .filter(account => account.type === 'Cash' || account.id === 'cash')[m
+[32m+[m[32m      .reduce((sum, account) => sum + Number(account.balance || 0), 0),[m
+[32m+[m[32m    [accounts][m
+[32m+[m[32m  )[m
+[32m+[m[32m  const bankBalance = Math.max(totalBalance - cashBalance, 0)[m
+[32m+[m[32m  const currentMonthTransferCount = useMemo([m
+[32m+[m[32m    () => transfers.filter(transfer => getMonthKey(transfer.date || transfer.createdAt || todayKey) === currentMonthKey).length,[m
+[32m+[m[32m    [transfers, currentMonthKey, todayKey][m
+[32m+[m[32m  )[m
+[32m+[m[32m  const currentMonthRecordCount = currentMonthTransactions.length + currentMonthTransferCount[m
+   const activeCommitments = useMemo([m
+     () => commitments.filter(c => c.active !== false),[m
+     [commitments][m
+[36m@@ -720,6 +812,22 @@[m [mexport default function App() {[m
+   const recentFilterLabel = recentFilterDate[m
+     ? new Date(`${recentFilterDate}T00:00:00`).toLocaleDateString()[m
+     : ''[m
+[32m+[m
+[32m+[m[32m  const changeSelectedExpenseDate = (days) => {[m
+[32m+[m[32m    setRecentFilterDate(prev =>[m
+[32m+[m[32m      addDaysToDateString(prev || todayString(), days)[m
+[32m+[m[32m    )[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  const openAddExpenseFromRecent = () => {[m
+[32m+[m[32m    setForm(f => ({[m
+[32m+[m[32m      ...f,[m
+[32m+[m[32m      type: 'expense',[m
+[32m+[m[32m      date: recentFilterDate || todayKey,[m
+[32m+[m[32m      category: CATEGORIES.includes(f.category) ? f.category : 'Food & Drink',[m
+[32m+[m[32m    }))[m
+[32m+[m[32m    setPage('add')[m
+[32m+[m[32m  }[m
+   const reportOptions = useMemo(buildMonthOptions, [])[m
+ [m
+   const reportExpenses = useMemo(() => {[m
+[36m@@ -1336,9 +1444,8 @@[m [mexport default function App() {[m
+           <img src="/hero-family.png" alt="Adam and Fatihah family portrait" className="family-img" />[m
+           <div className="family-overlay" />[m
+           <div className="family-content">[m
+[31m-            <p className="family-greeting">Assalamualaikum 👋</p>[m
+[31m-            <h1 className="family-title">Adam &<br/>Fatihah</h1>[m
+[31m-            <p className="family-sub">Family Expense Tracker</p>[m
+[32m+[m[32m            <h1 className="family-title">Adam & Fatihah</h1>[m
+[32m+[m[32m            <p className="family-sub">{currentMonthOverviewLabel}</p>[m
+             <div className="family-spent-badge">[m
+               <div className="badge-icon">[m
+                 <BarChart3 size={22} aria-hidden="true"/>[m
+[36m@@ -1365,25 +1472,21 @@[m [mexport default function App() {[m
+           setPage('add')[m
+         }}>[m
+           <div className="qa-icon qa-orange"><Plus size={19} aria-hidden="true"/></div>[m
+[31m-          <span className="qa-label">Expense</span>[m
+[32m+[m[32m          <span className="qa-label">+ Expense</span>[m
+         </button>[m
+         <button className="qa-btn" onClick={() => {[m
+           setForm(f => ({ ...f, type: 'income', category: INCOME_CATEGORIES.includes(f.category) ? f.category : 'Salary' }))[m
+           setPage('add')[m
+         }}>[m
+           <div className="qa-icon qa-green"><Download size={19} aria-hidden="true"/></div>[m
+[31m-          <span className="qa-label">Income</span>[m
+[32m+[m[32m          <span className="qa-label">+ Income</span>[m
+         </button>[m
+         <button className="qa-btn" onClick={() => {[m
+           setForm(f => ({ ...f, type: 'transfer', category: 'Transfer', toAccountId: f.toAccountId || accounts.find(a => a.id !== f.accountId)?.id || '' }))[m
+           setPage('add')[m
+         }}>[m
+           <div className="qa-icon qa-blue"><Repeat2 size={19} aria-hidden="true"/></div>[m
+[31m-          <span className="qa-label">Transfer</span>[m
+[31m-        </button>[m
+[31m-        <button className="qa-btn" onClick={handleExportBackup}>[m
+[31m-          <div className="qa-icon qa-green"><Download size={19} aria-hidden="true"/></div>[m
+[31m-          <span className="qa-label">Export</span>[m
+[32m+[m[32m          <span className="qa-label">⇄ Transfer</span>[m
+         </button>[m
+       </div>[m
+ [m
+[36m@@ -1400,6 +1503,30 @@[m [mexport default function App() {[m
+               <div className="pill">Budget {formatRM(effectiveMonthlyBudget)}</div>[m
+             </div>[m
+ [m
+[32m+[m[32m            {/* Today's spending summary */}[m
+[32m+[m[32m            <DailySummaryCard[m
+[32m+[m[32m              title="Today's Spending"[m
+[32m+[m[32m              spent={todayTotal}[m
+[32m+[m[32m              recordCount={todayExpenseRecords.length}[m
+[32m+[m[32m              biggestAmount={todayBiggestExpense}[m
+[32m+[m[32m            />[m
+[32m+[m
+[32m+[m[32m            <div className="category-chip-row" aria-label="Today's category spending">[m
+[32m+[m[32m              {todayCategoryChips.length ? ([m
+[32m+[m[32m                todayCategoryChips.map(item => ([m
+[32m+[m[32m                  <div key={item.category} className="category-insight-chip">[m
+[32m+[m[32m                    <span>{item.category}</span>[m
+[32m+[m[32m                    <strong>{formatRM(item.amount)}</strong>[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                ))[m
+[32m+[m[32m              ) : ([m
+[32m+[m[32m                <div className="category-insight-chip muted">[m
+[32m+[m[32m                  <span>No spending today</span>[m
+[32m+[m[32m                  <strong>{formatRM(0)}</strong>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m              )}[m
+[32m+[m[32m            </div>[m
+[32m+[m
+             {/* Stats 2x2 with sparklines */}[m
+             <div className="stats-grid">[m
+               <article className="stat-card">[m
+[36m@@ -1423,10 +1550,10 @@[m [mexport default function App() {[m
+               <article className="stat-card">[m
+                 <div className="stat-card-top">[m
+                   <div className="stat-icon-badge"><Wallet size={20} aria-hidden="true"/></div>[m
+[31m-                  <span className="stat-label">NET BALANCE</span>[m
+[32m+[m[32m                  <span className="stat-label">REMAINING BUDGET</span>[m
+                 </div>[m
+[31m-                <p className={`stat-value${monthNetTotal >= 0 ? ' income-value' : ''}`}>{formatRM(monthNetTotal)}</p>[m
+[31m-                <p className="stat-note">Income minus expenses</p>[m
+[32m+[m[32m                <p className="stat-value">{formatRM(remainingBudget)}</p>[m
+[32m+[m[32m                <p className="stat-note">Budget minus spending</p>[m
+                 <SparkLine[m
+                   color="#9B7EC8"[m
+                   type="progress"[m
+[36m@@ -1438,8 +1565,8 @@[m [mexport default function App() {[m
+                   <div className="stat-icon-badge"><FileText size={20} aria-hidden="true"/></div>[m
+                   <span className="stat-label">TRANSACTIONS</span>[m
+                 </div>[m
+[31m-                <p className="stat-value">{currentMonthTransactions.length}</p>[m
+[31m-                <p className="stat-note">Income and expenses</p>[m
+[32m+[m[32m                <p className="stat-value">{currentMonthRecordCount}</p>[m
+[32m+[m[32m                <p className="stat-note">All records this month</p>[m
+                 <SparkLine color="#6BA8D4" type="wave2" values={transactionSparkline}/>[m
+               </article>[m
+             </div>[m
+[36m@@ -1489,14 +1616,21 @@[m [mexport default function App() {[m
+             <div className="section-head">[m
+               <div>[m
+                 <p className="eyebrow">Accounts</p>[m
+[31m-                <h2>Balances</h2>[m
+[32m+[m[32m                <div className="balances-title-row">[m
+[32m+[m[32m                  <h2>Balances</h2>[m
+[32m+[m[32m                  <span className="pill balance-total-pill">{formatRM(totalBalance)}</span>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <div className="balance-split-row">[m
+[32m+[m[32m                  <span>Cash {formatRM(cashBalance)}</span>[m
+[32m+[m[32m                  <span>Bank {formatRM(bankBalance)}</span>[m
+[32m+[m[32m                </div>[m
+               </div>[m
+[31m-              <button className="manage-link" onClick={() => setPage('accounts')}>Manage</button>[m
+[32m+[m[32m              <button className="manage-link" onClick={() => setPage('settings')}>Manage</button>[m
+             </div>[m
+ [m
+             <div className="account-list">[m
+               {dashboardAccounts.map(acc => ([m
+[31m-                <div key={acc.id} className="account-row" onClick={() => setPage('accounts')} style={{cursor:'pointer'}}>[m
+[32m+[m[32m                <div key={acc.id} className="account-row" onClick={() => setPage('settings')} style={{cursor:'pointer'}}>[m
+                   <div className="account-left">[m
+                     <AccountBadge name={acc.name} type={acc.type}/>[m
+                     <div>[m
+[36m@@ -1514,8 +1648,20 @@[m [mexport default function App() {[m
+                 </div>[m
+               ))}[m
+             </div>[m
+[32m+[m[32m          </section>[m
+[32m+[m[32m        )}[m
+[32m+[m
+[32m+[m[32m        {/* ── RECENT EXPENSES ── */}[m
+[32m+[m[32m        {page === 'recent' && ([m
+[32m+[m[32m          <section className="section-card">[m
+[32m+[m[32m            <DailySummaryCard[m
+[32m+[m[32m              title={recentFilterDate && recentFilterDate !== todayKey ? `Spending on ${recentFilterLabel}` : "Today's Spending"}[m
+[32m+[m[32m              spent={selectedDaySpendTotal}[m
+[32m+[m[32m              recordCount={selectedDayExpenseRecords.length}[m
+[32m+[m[32m              biggestAmount={selectedDayBiggestExpense}[m
+[32m+[m[32m              transactionLabel={recentFilterDate && recentFilterDate !== todayKey ? 'transactions' : 'transactions today'}[m
+[32m+[m[32m            />[m
+ [m
+[31m-            {/* Recent expenses */}[m
+             <article className="card">[m
+               <div className="section-head" style={{marginBottom:12}}>[m
+                 <div>[m
+[36m@@ -1523,17 +1669,23 @@[m [mexport default function App() {[m
+                   <h2>Last expenses</h2>[m
+                 </div>[m
+                 <div className="recent-actions">[m
+[31m-                  <label className="recent-date-control" htmlFor="recent-date-filter" aria-label="Filter recent expenses by date">[m
+[32m+[m[32m                  <button type="button" className="recent-date-step" onClick={() => changeSelectedExpenseDate(-1)} aria-label="Previous day">[m
+[32m+[m[32m                    {'<'}[m
+[32m+[m[32m                  </button>[m
+[32m+[m[32m                  <div className="recent-date-control" aria-label="Filter recent expenses by date">[m
+                     <Calendar size={14} aria-hidden="true"/>[m
+                     <input id="recent-date-filter" type="date" value={recentFilterDate}[m
+                       onChange={e => setRecentFilterDate(e.target.value)}/>[m
+[31m-                  </label>[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                  <button type="button" className="recent-date-step" onClick={() => changeSelectedExpenseDate(1)} aria-label="Next day">[m
+[32m+[m[32m                    {'>'}[m
+[32m+[m[32m                  </button>[m
+                   {recentFilterDate && ([m
+                     <button type="button" className="recent-clear-button" onClick={() => setRecentFilterDate('')}>[m
+                       Clear[m
+                     </button>[m
+                   )}[m
+[31m-                  <button type="button" className="button button-primary" style={{fontSize:11,padding:'7px 14px'}} onClick={() => setPage('add')}>[m
+[32m+[m[32m                  <button type="button" className="button button-primary" style={{fontSize:11,padding:'7px 14px'}} onClick={openAddExpenseFromRecent}>[m
+                     <Plus size={15} aria-hidden="true"/> Add[m
+                   </button>[m
+                 </div>[m
+[36m@@ -1558,8 +1710,13 @@[m [mexport default function App() {[m
+                       </div>[m
+                     </div>[m
+                     <div className="expense-right">[m
+[31m-                      <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>[m
+[32m+[m[32m                      <div className="expense-amount-column">[m
+[32m+[m[32m                        <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>[m
+[32m+[m[32m                      </div>[m
+                       <button className="mini-button" onClick={() => handleEditExpense(ex)}>Edit</button>[m
+[32m+[m[32m                      <button className="mini-button mini-delete" onClick={() => handleDeleteExpense(ex.id)}>[m
+[32m+[m[32m                        <Trash size={12} aria-hidden="true" />[m
+[32m+[m[32m                      </button>[m
+                     </div>[m
+                   </div>[m
+                 ))}[m
+[36m@@ -1698,11 +1855,15 @@[m [mexport default function App() {[m
+                       </div>[m
+                     </div>[m
+                     <div className="expense-right">[m
+[31m-                      <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>[m
+[32m+[m[32m                      <div className="expense-amount-column">[m
+[32m+[m[32m                        <p className={`expense-amount${getTransactionAmountClass(ex)}`}>{getTransactionAmountLabel(ex)}</p>[m
+[32m+[m[32m                      </div>[m
+                       {getTransactionType(ex) !== 'transfer' && ([m
+                         <>[m
+                           <button className="mini-button" onClick={() => handleEditExpense(ex)}>Edit</button>[m
+[31m-                          <button className="mini-button mini-delete" onClick={() => handleDeleteExpense(ex.id)}>Del</button>[m
+[32m+[m[32m                          <button className="mini-button mini-delete" onClick={() => handleDeleteExpense(ex.id)}>[m
+[32m+[m[32m                            <Trash size={12} aria-hidden="true" />[m
+[32m+[m[32m                          </button>[m
+                         </>[m
+                       )}[m
+                     </div>[m
+[36m@@ -1790,10 +1951,14 @@[m [mexport default function App() {[m
+           </section>[m
+         )}[m
+ [m
+[31m-        {/* ── ACCOUNTS ── */}[m
+[31m-        {page === 'accounts' && ([m
+[32m+[m[32m        {/* ── SETTINGS ── */}[m
+[32m+[m[32m        {page === 'settings' && ([m
+           <section className="section-card">[m
+             <div className="section-head">[m
+[32m+[m[32m              <div><p className="eyebrow">Settings</p><h2>Personalize</h2></div>[m
+[32m+[m[32m            </div>[m
+[32m+[m
+[32m+[m[32m            <div className="section-head" style={{ marginTop: 24 }}>[m
+               <div><p className="eyebrow">Accounts</p><h2>Manage balances</h2></div>[m
+             </div>[m
+             <div className="account-total-strip">[m
+[36m@@ -1828,14 +1993,9 @@[m [mexport default function App() {[m
+                 </div>[m
+               </div>[m
+             ))}[m
+[31m-          </section>[m
+[31m-        )}[m
+ [m
+[31m-        {/* ── SETTINGS ── */}[m
+[31m-        {page === 'settings' && ([m
+[31m-          <section className="section-card">[m
+[31m-            <div className="section-head">[m
+[31m-              <div><p className="eyebrow">Settings</p><h2>Personalize</h2></div>[m
+[32m+[m[32m            <div className="section-head" style={{ marginTop: 32 }}>[m
+[32m+[m[32m              <div><p className="eyebrow">Preferences</p><h2>App settings</h2></div>[m
+             </div>[m
+             <article className="card settings-card">[m
+               <div className="setting-row">[m

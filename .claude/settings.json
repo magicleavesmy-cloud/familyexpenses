@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chromium-cli --help)",
+      "Bash(node -e \"require.resolve\\('playwright'\\)\")",
+      "Bash(npx --no-install playwright --version)",
+      "Bash(node -e \"console.log\\(require.resolve\\('playwright'\\)\\)\")",
+      "Bash(npm ls *)",
+      "Bash(timeout 15 npx -y playwright --version)",
+      "Bash(timeout 120 npx -y playwright install chromium --with-deps)",
+      "Bash(timeout 120 npx -y playwright install chromium)",
+      "Bash(node /tmp/verify-spend-card.mjs)",
+      "Bash(mkdir -p /tmp/pw)",
+      "Bash(npm init *)",
+      "Bash(node verify-spend-card.mjs)",
+      "Bash(node -e \"console.log\\(1\\)\")",
+      "Bash(pkill -f \"vite\")",
+      "Bash(npx eslint *)",
+      "Bash(git stash *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:5173)",
+      "Bash(curl -sf http://localhost:5173)",
+      "Bash(break)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}
